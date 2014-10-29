@@ -1,0 +1,71 @@
+#!/bin/sh
+
+err() {
+    echo $1 1>&2
+    exit 1
+}
+
+download() {
+    #fetch $1 -o $2
+    cp /home/jeroen/${1##*/} $2
+}
+
+# Prepares the system for running jails,
+# $1: directory to which the jail skeleton is installed
+# $2: release of the jail
+# $3: mirror
+prepare() {
+    destdir=${1:-/storage/jails/}
+    release=${2:-$(uname -r)}
+    mirror=${3:-"http://ftp.nl.freebsd.org/os/FreeBSD/releases/$(uname -m)/${release}"}
+
+    files="base.txz"
+
+    if [ -d "$destdir" ]; then
+        [ -n "$(ls -I $destdir)" ] && err "$destdir already exists" 1
+    else
+        mkdir $destdir || err "Error while creating $destdir" 1
+    fi
+
+    tmp_dir=$(mktemp -d)
+
+    for file in $files; do
+        tmp_file="${tmp_dir}/${file}"
+        if ! download "${mirror}/${file}" $tmp_file; then
+            err "Error while fetching ${mirror}/${file}.txz" 1
+        fi
+    done
+
+    for file in $files; do
+        if ! tar -xf "${tmp_dir}/${file}" -C $destdir; then
+            err "Error while extracting ${tmp_dir}/${file}" 1
+        fi
+    done
+
+    rm -rf $tmp_dir
+}
+
+err() {
+    echo $1 1>&2
+    if [ "$#" -gt 1 ]; then
+        exit $2
+    fi
+}
+usage() {
+    err "ello-jail: prepare"
+    exit
+}
+
+if [ "$#" -lt 1 ]; then
+    usage
+fi
+
+case $1 in
+    "prepare")
+        prepare
+        ;;
+    *)
+        err "Unknown function \"${1}\""
+        usage
+        ;;
+esac
