@@ -1,13 +1,175 @@
 #!/bin/sh
 
+readonly CONFIG_LOCATION=/usr/local/etc/ello-jail
+[ -r $CONFIG_LOCATION ] && . $CONFIG_LOCATION
+
 err() {
     echo $1 1>&2
     exit 1
 }
 
 download() {
-    #fetch $1 -o $2
-    cp /home/jeroen/${1##*/} $2
+    local target=${1##*/}
+    local destdir=$2
+    local staging_area=${3%/}
+
+
+    local outfile=$staging_area/$target
+    if [ ! -r "$outfile" ]; then
+        fetch $1 -o $outfile
+    fi
+
+    cp $outfile $destdir
+}
+
+readonly READ_ONLY="./COPYRIGHT \
+                    ./bin/* \
+                    ./boot/* \
+                    ./lib/* \
+                    ./libexec/* \
+                    ./rescue/* \
+                    ./sbin/* \
+                    ./sys/* \
+                    ./usr/bin/* \
+                    ./usr/games/* \
+                    ./usr/include/* \
+                    ./usr/lib/* \
+                    ./usr/lib32/* \
+                    ./usr/libdata/* \
+                    ./usr/libexec/* \
+                    ./usr/sbin/* \
+                    ./usr/share/* \
+                    ./usr/src/*"
+
+extract() {
+    [ "$#" -lt 3 ] && err "extract (${LINENO}): expecting 3 arguments" 1
+    local archive=$1
+    local destdir=$2
+    local part=$3
+    local option=""
+    
+    case $part in 
+        rw)
+            option=exclude;;
+        ro)
+            option=include;;
+        *)
+            err "extract (${LINENO}): third argument must be 'ro' or 'rw'" 1;;
+    esac
+
+    inclusion_pattern=`echo $READ_ONLY | awk '{
+        for (i = 1; i <= NF; i++)
+            printf "--'$option'=%s ", $i }'`
+
+    tar -xf $archive $inclusion_pattern -C $destdir/base-$part
+}
+
+extract_rw() {
+    extract $1 $2 rw
+}
+
+extract_ro() {
+    extract $1 $2 ro
+}
+
+
+chflag_and_rm() {
+    [ -d $1 ] || return 0 
+    chflags -R noschg $1 &&
+        rm -rf $1 > /dev/null 2>&1
+}
+
+clone_raw() {
+    echo $@
+    local from=$1
+    local what=$2
+    local to=$3
+    shift 3
+
+    tar $@ -f - -C $from -c $what | tar -xf - -p -C $to
+}
+
+clone() {
+    local jails_dir=/storage/jails
+
+    [ "$1" = "ro" ] || [ "$1" = "rw" ] ||
+        err "clone ($LINENO): first argument must be ro or rw" 1
+    local part=$1
+
+    local from_dir=$jails_dir/base-$part
+    local what=$2
+    local to_dir=$3
+
+    shift 3
+
+    clone_raw $from_dir $what $to_dir $@
+}
+
+create_template() {
+    local jails_dir=/storage/jails
+    local templates_dir=$jails_dir/templates
+    local template_name=$1
+    local dest_dir=$templates_dir/$template_name
+
+    [ -d "$dest_dir" ] && \
+        err "create_template ($LINENO): Cannot create template \"${template_name}\", $dest_dir exists" 1
+
+    mkdir -p $dest_dir || \
+        err "create_template ($LINENO): Could not create template directory $dest_dir" 1
+
+    clone rw "etc" $dest_dir -n
+    clone_raw "/" "etc/localtime" "$dest_dir"
+    clone rw "etc/master.passwd" $dest_dir
+    # XXX: disable root passwords by default
+}
+
+
+create_jail() {
+    local jails_dir=/storage/jails
+    local jail_name=$1
+    local dest_dir=$jails_dir/$jail_name 
+    local base_dir=""
+    local target=""
+    local ro_dir=""
+    
+    cleanup_and_err() {
+        rm -rf $dest_dir > /dev/null 2>&1
+        err $@
+    }
+
+    [ -d "$dest_dir" ] && \
+        err "create_jail ($LINENO): Cannot create a jail named \"${jail_name}\", $dest_dir exists" 1
+
+
+    mkdir -p $dest_dir/ro
+    # Ensure that usr in our new jail has the same permissions as usr in base-ro
+    # The -n option forces tar to operate non-recursively, i.e. to only copy the
+    # usr directory, not its contents
+    tar -nf - -C $jails_dir/base-ro -c usr | tar -xp -f - -C $dest_dir || \
+        cleanup_and_err "create_jail ($LINENO): Error while cloning the usr directory." 1
+    
+    for ro_dir in $READ_ONLY; do
+        target=${ro_dir#./}
+        target=${target%'/*'}
+        ln -s /ro/$target $dest_dir/$target
+    done
+
+    tar -f - -C $jails_dir/base-rw -c . | tar -xp -f - -C $dest_dir || \
+        cleanup_and_err "create_jail ($LINENO): Error while cloning writable filesystem." 1
+
+    # write config
+    cat > /etc/jail.conf <<EOF
+$jail_name {
+    host.hostname="$jail_name";
+    mount="$jails_dir/base-ro $dest_dir/ro nullfs ro 0 0";
+    ip4.addr="10.0.2.100";
+    exec.start="/bin/sh /etc/rc";
+    exec.stop="/bin/sh /etc/rc.shutdown";
+    mount.devfs;
+    exec.clean;
+    path="$dest_dir";
+}
+EOF
 }
 
 # Prepares the system for running jails,
@@ -15,42 +177,59 @@ download() {
 # $2: release of the jail
 # $3: mirror
 prepare() {
-    destdir=${1:-/storage/jails/}
-    release=${2:-$(uname -r)}
-    mirror=${3:-"http://ftp.nl.freebsd.org/os/FreeBSD/releases/$(uname -m)/${release}"}
+    local destdir=${1:-/storage/jails}
+    local release=${2:-$(uname -r)}
+    local mirror=${3:-"http://ftp.nl.freebsd.org/os/FreeBSD/releases/$(uname -m)/${release}"}
+    local files="base.txz"
+    local tmp_dir=""
 
-    files="base.txz"
+    cleanup() {
+        [ -d "$tmp_dir" ] && rm -rf $tmp_dir > /dev/null 2>&1
+    }
 
-    if [ -d "$destdir" ]; then
-        [ -n "$(ls -I $destdir)" ] && err "$destdir already exists" 1
-    else
-        mkdir $destdir || err "Error while creating $destdir" 1
-    fi
+    cleanup_and_err() {
+        cleanup
+        for i in rw ro; do
+            j="$destdir/base-$i"
+            chflag_and_rm $j && \
+                err "Could not delete $j"
+        done
+        err $1 $2
+    }
 
+    for checkdir in $destdir/base-rw $destdir/base-ro; do
+        [ -d "$checkdir" ] && \
+            [ -n "$(ls -I $checkdir)" ] && \
+            err "$checkdir already exists" 1
+    done
+    
+    for checkdir in $destdir/base-rw $destdir/base-ro; do
+        mkdir -p $checkdir || err "Error while creating $checkdir" 1
+    done
+
+    echo -n "Downloading distribution archives... "
     tmp_dir=$(mktemp -d)
-
     for file in $files; do
         tmp_file="${tmp_dir}/${file}"
-        if ! download "${mirror}/${file}" $tmp_file; then
-            err "Error while fetching ${mirror}/${file}.txz" 1
-        fi
+        download "${mirror}/${file}" $tmp_file /home/jeroen || \
+            cleanup_and_err "Error while fetching ${mirror}/${file}.txz" 1
     done
+    echo "done."
 
+    echo -n "Extracting base jail... " 
     for file in $files; do
-        if ! tar -xf "${tmp_dir}/${file}" -C $destdir; then
-            err "Error while extracting ${tmp_dir}/${file}" 1
-        fi
+        for part in ro rw; do
+            extract ${tmp_dir}/${file} $destdir $part || \
+                cleanup_and_err "Error while extracting ${tmp_dir}/${file}" 1
+        done
     done
+    echo "done."
 
-    rm -rf $tmp_dir
+    create_template default $1 
+
+    cleanup
 }
 
-err() {
-    echo $1 1>&2
-    if [ "$#" -gt 1 ]; then
-        exit $2
-    fi
-}
 usage() {
     err "ello-jail: prepare"
     exit
@@ -63,6 +242,15 @@ fi
 case $1 in
     "prepare")
         prepare
+        ;;
+    "extract")
+        extract w00t /storage/jails rw
+        ;;
+    "create")
+        create_jail $2
+        ;;
+    "create-template")
+        create_template $2
         ;;
     *)
         err "Unknown function \"${1}\""
