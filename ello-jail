@@ -90,6 +90,20 @@ is_template() {
     [ -d "$templates_dir/$1" ]
 }
 
+# is_valid_ipv4_address_list returns successfully if its first argument can
+# be used to set the jail's ipv4.addr parameter
+is_valid_ipv4_address_list() {
+    # TODO: Implement
+    true
+}
+
+# is_valid_ipv6_address_list returns successfully if its first argument can
+# be used to set the jail's ipv6.addr parameter
+is_valid_ipv6_address_list() {
+    # TODO: Implement
+    true
+}
+
 # A space-separated list of directories that belong to the read only part of the
 # base jail
 readonly READ_ONLY_DIRS="./COPYRIGHT \
@@ -219,11 +233,66 @@ create_template() {
 
 create_jail() {
 
-    local jail_name=$1
-    is_valid_jailname $1 || err "$jail_name is not a valid jailname."
+    local jail_name=''
+    local jail_template='default'
+    local jail_hostname=''
+    local jail_ipv4_addr=''
+    local jail_ipv6_addr=''
 
-    local jail_template=${2:-'default'}
-    is_template $jail_template || err "Template $jail_template does not exist."
+
+    OPTIND=1
+    while getopts 'n:h:t:4:6:' arg; do
+        case $arg in
+            n)
+                jail_name=$OPTARG
+                ;;
+            t)
+                jail_template=$OPTARG
+                ;;
+            h)
+                jail_hostname=$OPTARG
+                ;;
+            4)
+                jail_ipv4_addr=$OPTARG
+                ;;
+            6)
+                jail_ipv6_addr=$OPTARG
+                ;;
+        esac
+    done
+
+    # Validate jail name
+    [ -z "$jail_name" ] && usage
+    is_valid_jailname $jailname || \
+        err "$jail_name is not a valid jailname"
+
+    # Validate hostname
+    [ -z "$jail_hostname" ] && warn 'No hostname given, using jailname' && \
+        : ${jail_hostname:=$jail_name}
+    is_valid_hostname $jail_hostname || \
+        err "$jail_hostname is not a valid hostname"
+
+    # Validate template
+    : ${jail_template:='default'}
+    is_template $jail_template || \
+        err "Could not find a template named '$jail_template'"
+
+    # Validate IP addresses
+    is_valid_ipv4_address_list $jail_ipv4_addr || \
+        err "'$jail_ipv4_addr' is not a valid address list"
+    is_valid_ipv6_address_list $jail_ipv6_addr || \
+        err "'$jail_ipv6_addr' is not a valid address list"
+
+
+    cat <<EOF
+About to create a jail
+    name:           $jail_name
+    hostname:       $jail_hostname
+    template:       $jail_template
+    jail_ipv4_addr: $jail_ipv4_addr
+    jail_ipv6_addr: $jail_ipv6_addr
+EOF
+    exit 0
 
     local dest_dir=$(dir_for_jail $jail_name)
     local base_dir=""
