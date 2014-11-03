@@ -9,6 +9,10 @@ err() {
     exit 1
 }
 
+warn() {
+    echo "Warning: " $@ 1>&2
+}
+
 download() {
     local target=${1##*/}
     local destdir=$2
