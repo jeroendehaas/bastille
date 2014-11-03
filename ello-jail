@@ -3,6 +3,7 @@
 readonly CONFIG_LOCATION=/usr/local/etc/ello-jail
 [ -r $CONFIG_LOCATION ] && . $CONFIG_LOCATION
 
+
 err() {
     echo $1 1>&2
     exit 1
@@ -22,27 +23,27 @@ download() {
     cp $outfile $destdir
 }
 
-readonly READ_ONLY="./COPYRIGHT \
-                    ./bin/* \
-                    ./boot/* \
-                    ./lib/* \
-                    ./libexec/* \
-                    ./rescue/* \
-                    ./sbin/* \
-                    ./sys/* \
-                    ./usr/bin/* \
-                    ./usr/games/* \
-                    ./usr/include/* \
-                    ./usr/lib/* \
-                    ./usr/lib32/* \
-                    ./usr/libdata/* \
-                    ./usr/libexec/* \
-                    ./usr/sbin/* \
-                    ./usr/share/* \
-                    ./usr/src/*"
+readonly READ_ONLY_DIRS="./COPYRIGHT \
+                         ./bin/* \
+                         ./boot/* \
+                         ./lib/* \
+                         ./libexec/* \
+                         ./rescue/* \
+                         ./sbin/* \
+                         ./sys/* \
+                         ./usr/bin/* \
+                         ./usr/games/* \
+                         ./usr/include/* \
+                         ./usr/lib/* \
+                         ./usr/lib32/* \
+                         ./usr/libdata/* \
+                         ./usr/libexec/* \
+                         ./usr/sbin/* \
+                         ./usr/share/* \
+                         ./usr/src/*"
 
 extract() {
-    [ "$#" -lt 3 ] && err "extract (${LINENO}): expecting 3 arguments" 1
+    [ "$#" -lt 3 ] && err "extract (${LINENO}): expecting 3 arguments"
     local archive=$1
     local destdir=$2
     local part=$3
@@ -54,10 +55,10 @@ extract() {
         ro)
             option=include;;
         *)
-            err "extract (${LINENO}): third argument must be 'ro' or 'rw'" 1;;
+            err "extract (${LINENO}): third argument must be 'ro' or 'rw'";;
     esac
 
-    inclusion_pattern=`echo $READ_ONLY | awk '{
+    inclusion_pattern=`echo $READ_ONLY_DIRS | awk '{
         for (i = 1; i <= NF; i++)
             printf "--'$option'=%s ", $i }'`
 
@@ -93,7 +94,7 @@ clone() {
     local jails_dir=/storage/jails
 
     [ "$1" = "ro" ] || [ "$1" = "rw" ] ||
-        err "clone ($LINENO): first argument must be ro or rw" 1
+        err "clone ($LINENO): first argument must be ro or rw"
     local part=$1
 
     local from_dir=$jails_dir/base-$part
@@ -112,10 +113,10 @@ create_template() {
     local dest_dir=$templates_dir/$template_name
 
     [ -d "$dest_dir" ] && \
-        err "create_template ($LINENO): Cannot create template \"${template_name}\", $dest_dir exists" 1
+        err "create_template ($LINENO): Cannot create template \"${template_name}\", $dest_dir exists"
 
     mkdir -p $dest_dir || \
-        err "create_template ($LINENO): Could not create template directory $dest_dir" 1
+        err "create_template ($LINENO): Could not create template directory $dest_dir"
 
     clone rw "etc" $dest_dir -n
     clone_raw "/" "etc/localtime" "$dest_dir"
@@ -138,7 +139,7 @@ create_jail() {
     }
 
     [ -d "$dest_dir" ] && \
-        err "create_jail ($LINENO): Cannot create a jail named \"${jail_name}\", $dest_dir exists" 1
+        err "create_jail ($LINENO): Cannot create a jail named \"${jail_name}\", $dest_dir exists"
 
 
     mkdir -p $dest_dir/ro
@@ -146,16 +147,16 @@ create_jail() {
     # The -n option forces tar to operate non-recursively, i.e. to only copy the
     # usr directory, not its contents
     tar -nf - -C $jails_dir/base-ro -c usr | tar -xp -f - -C $dest_dir || \
-        cleanup_and_err "create_jail ($LINENO): Error while cloning the usr directory." 1
+        cleanup_and_err "create_jail ($LINENO): Error while cloning the usr directory."
     
-    for ro_dir in $READ_ONLY; do
+    for ro_dir in $READ_ONLY_DIRS; do
         target=${ro_dir#./}
         target=${target%'/*'}
         ln -s /ro/$target $dest_dir/$target
     done
 
     tar -f - -C $jails_dir/base-rw -c . | tar -xp -f - -C $dest_dir || \
-        cleanup_and_err "create_jail ($LINENO): Error while cloning writable filesystem." 1
+        cleanup_and_err "create_jail ($LINENO): Error while cloning writable filesystem."
 
     # write config
     cat > /etc/jail.conf <<EOF
@@ -191,16 +192,15 @@ prepare() {
         cleanup
         for i in rw ro; do
             j="$destdir/base-$i"
-            chflag_and_rm $j && \
-                err "Could not delete $j"
+            [ -d "$j" ] && chflag_and_rm $j
         done
-        err $1 $2
+        err $@
     }
 
     for checkdir in $destdir/base-rw $destdir/base-ro; do
         [ -d "$checkdir" ] && \
             [ -n "$(ls -I $checkdir)" ] && \
-            err "$checkdir already exists" 1
+            err "$checkdir already exists"
     done
     
     for checkdir in $destdir/base-rw $destdir/base-ro; do
@@ -230,6 +230,48 @@ prepare() {
     cleanup
 }
 
+
+upgrade() {
+    local jails_dir=/storage/jails
+    local log_file=/var/log/ello-jail-upgrade
+    local target=""
+    local cycles=0
+
+    cleanup() {
+    }
+
+    cleanup_and_err() {
+        err $@
+    }
+
+    for i in ro rw; do
+        [ -d "${jails_dir}/base-${i}" ] || \
+            cleanup_and_err "upgrade ($LINENO): $jails_dir/base-$i not found. Did you configure ello-jail?" 1
+    done
+
+    : > $log_file
+    echo -n 'Updating base...'
+    for i in ro rw; do
+        target=$jails_dir/base-$i
+        echo -n '.'
+        echo 'y' | PAGER=cat freebsd-update upgrade -b $target -r 10.1-RC4 > $log_file 2>&1 || \
+            cleanup_and_err "upgrade ($LINENO): Error while fetching upgrade" 1
+
+        cycles=0
+        while [ $? -eq 0 ]; do
+            cycles=$(($cycles+1))
+            echo -n '.'
+            PAGER=cat freebsd-update install -b $target > $log_file 2>&1
+        done
+    done
+    echo 'done'
+
+    if [ $cycles -gt 1 ]; then # We need to update the individual jails as well for changes in configuration files
+    fi
+
+    cleanup
+}
+
 usage() {
     err "ello-jail: prepare"
     exit
@@ -251,6 +293,9 @@ case $1 in
         ;;
     "create-template")
         create_template $2
+        ;;
+    "upgrade")
+        upgrade
         ;;
     *)
         err "Unknown function \"${1}\""
