@@ -43,6 +43,55 @@ download() {
     cp $outfile $destdir
 }
 
+# is_valid_label returns successfully if its first argument contains
+# only English letters, hyphens and decimal digits.
+is_valid_label() {
+    local label=$1
+    [ ${#label} -gt 0 ] && [ ${#label} -lt 64 ] && \
+        echo $label | grep -qE '^[a-zA-Z0-9\-]+$'
+}
+
+# is_valid_hostname returns successfully if it is given a number (minimum 1) of
+# hostnames that are valid FQDN's. The function will return unsuccessfully if it
+# encounters an invalid FQDN, in which case its exit code equals the index of
+# the first invalid hostname
+is_valid_hostname() {
+    [ $# -lt 1 ] && err "is_valid_hostname ($LINENO) expects at least \
+        one argument"
+    local hname=""
+    local n=1
+    for hname; do
+        # Hostnames may not contain double dots
+        case "$hname" in *..*) return $n;; esac
+        [ ${#hname} -lt 256 ] || return $n
+        for label in $(echo $hname | sed -E 's/\./ /g'); do
+            is_valid_label $label || return $n
+        done
+        n=$(($n+1))
+    done
+    return 0
+}
+
+# is_valid_jailname returns successfully if its first argument does not contain
+# dots, spaces and forward slashes
+is_valid_jailname() {
+    echo $1 | grep -qv '[\. /]'
+}
+
+# hostname_to_jailname translates a hostname into a jailname by replacing any
+# dots by underscores.
+hostname_to_jailname() {
+    echo $1 | sed -E 's/\.+/_/g'
+}
+
+# is_template returns successfully if its first argument is a directory inside
+# the templates directory
+is_template() {
+    [ -d "$templates_dir/$1" ]
+}
+
+# A space-separated list of directories that belong to the read only part of the
+# base jail
 readonly READ_ONLY_DIRS="./COPYRIGHT \
                          ./bin/* \
                          ./boot/* \
@@ -105,7 +154,6 @@ clone() {
     local what=$2
     local to=$3
     shift 3
-
     tar $@ -f - -C $from -c $what | tar -xf - -p -C $to
 }
 
@@ -120,15 +168,15 @@ clone_from_base() {
 
     shift 3
 
-    clone$from_dir $what $to_dir $@
+    clone $from_dir $what $to_dir $@
 }
 
 clone_from_base_rw() {
-    clone_from_base_rw $@
+    clone_from_base rw $@
 }
 
 clone_from_base_ro() {
-    clone_from_base_ro $@
+    clone_from_base ro $@
 }
 
 # Merges the contents of a template into a jail
@@ -164,15 +212,20 @@ create_template() {
         warn "create_template ($LINENO): Could not copy /etc/localtime to template. \
             Remember to set the correct timezone manually."
     clone_from_base_rw "etc/master.passwd" $t_root && \
-        sed -E 's/^(root|toor):[^:]*:/\1:*:/g' $t_root/etc/master.passwd | tee $t_root/etc/master.passwd || \
+        sed -E 's/^(root|toor):[^:]*:/\1:*:/g' $t_root/etc/master.passwd > $t_root/etc/master.passwd || \
         warn "create_template ($LINENO): Could not disable root password based logins."
 }
 
 
 create_jail() {
+
     local jail_name=$1
-    local dest_dir=$(dir_for_jail $jail_name)
+    is_valid_jailname $1 || err "$jail_name is not a valid jailname."
+
     local jail_template=${2:-'default'}
+    is_template $jail_template || err "Template $jail_template does not exist."
+
+    local dest_dir=$(dir_for_jail $jail_name)
     local base_dir=""
     local target=""
     local ro_dir=""
@@ -190,8 +243,9 @@ create_jail() {
     # Ensure that usr in our new jail has the same permissions as usr in base-ro
     # The -n option forces tar to operate non-recursively, i.e. to only copy the
     # usr directory, not its contents
-    clone_from_base_ro usr $dest_dir || \
-        cleanup_and_err "create_jail ($LINENO): Error while cloning the usr directory."
+    clone_from_base_ro usr $dest_dir -n || \
+        err "create_jail ($LINENO): Error while cloning the usr \
+            directory."
     
     for ro_dir in $READ_ONLY_DIRS; do
         target=${ro_dir#./}
@@ -200,13 +254,14 @@ create_jail() {
     done
 
     clone_from_base_rw . $dest_dir || \
-        cleanup_and_err "create_jail ($LINENO): Error while cloning writable filesystem."
+        cleanup_and_err "create_jail ($LINENO): Error while cloning \
+            writable filesystem."
 
     # Finally merge template
     merge_template $jail_name $jail_template
 
     # write config
-    cat > /etc/jail.conf <<EOF
+    cat >> /etc/jail.conf <<EOF
 $jail_name {
     host.hostname="$jail_name";
     mount="$jails_dir/base-ro $dest_dir/ro nullfs ro 0 0";
