@@ -5,7 +5,7 @@ readonly CONFIG_LOCATION=/usr/local/etc/ello-jail
 
 
 err() {
-    echo $1 1>&2
+    echo "Error: " $@ 1>&2
     exit 1
 }
 
