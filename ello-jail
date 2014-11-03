@@ -8,8 +8,6 @@ readonly CONFIG_LOCATION=/usr/local/etc/ello-jail
 : ${templates_dir:="$jails_dir/templates"}
 : ${base_dir:="$jails_dir/base"}
 
-
-
 err() {
     echo "Error: " $@ 1>&2
     exit 1
@@ -139,7 +137,7 @@ readonly READ_ONLY_DIRS="./COPYRIGHT \
                          ./usr/src/*"
 
 # has_base_part returns successfully if its first argument is a non-empty directory
-# in the directory $base_dir. 
+# in the directory $base_dir 
 has_base_part() {
     [ "$#" = 1 ] || err "has_base_part expects one argument"
     local target=$(dir_for_base_part $1)
@@ -169,13 +167,6 @@ extract_base() {
     tar -xf $archive $inclusion_pattern -C $(dir_for_base_part $part)
 }
 
-extract_rw() {
-    extract_base $1 rw
-}
-
-extract_ro() {
-    extract_base $1 ro
-}
 
 
 chflag_and_rm() {
@@ -197,11 +188,7 @@ clone_from_base() {
     local part=$1
     has_base_part $part || err "clone_from_base ($LINENO): base part '$part' not installed"
 
-    [ "$1" = "ro" ] || [ "$1" = "rw" ] ||
-        err "clone_from_base ($LINENO): first argument must be ro or rw"
-    local part=$1
-
-    local from_dir=$jails_dir/base-$part
+    local from_dir=$(dir_for_base_part $part)
     local what=$2
     local to_dir=$3
 
@@ -263,6 +250,7 @@ create_jail() {
     local jail_hostname=''
     local jail_ipv4_addr=''
     local jail_ipv6_addr=''
+    local jail_components=''
     local quiet="false"
 
 
@@ -323,7 +311,6 @@ About to create a jail:
 EOF
 
     local dest_dir=$(dir_for_jail $jail_name)
-    local base_dir=""
     local target=""
     local ro_dir=""
     
@@ -369,7 +356,7 @@ EOF
     cat >> /etc/jail.conf <<EOF
 $jail_name {
     host.hostname="$jail_hostname";
-    mount="$jails_dir/base-ro $dest_dir/ro nullfs ro 0 0";
+    mount="$(dir_for_base_part ro) $dest_dir/ro nullfs ro 0 0";
     ip4.addr="$jail_ipv4_addr";
     ip6.addr="$jail_ipv6_addr";
     exec.start="/bin/sh /etc/rc";
@@ -381,6 +368,64 @@ $jail_name {
 EOF
     say "Jail '$jail_name' succcessfully created."
 }
+
+fetch_component() {
+    local mirror="http://ftp.nl.freebsd.org/os/FreeBSD/releases/$(uname -m)/$(uname -r)"
+    fetch "$mirror/${1}.txz" -o "$2/${1}.txz"
+}
+
+# add_component installs one component provided by its first argument into the base
+# read-only system. 
+add_component() {
+    local component=$1
+    local tmp_dir=""
+
+    cleanup() {
+        [ -n "$tmp_dir" ] && [ -d "$tmp_dir" ] && rm -rf $tmp_dir > /dev/null 2>&1
+    }
+
+    cleanup_and_err() {
+        cleanup
+        err $@
+    }
+
+    case "$component" in
+        doc|games|ports|src) 
+            ;;
+        lib32)
+            [ `uname -m` = 'amd64' ] || err "lib32 is only available on amd64"
+            ;;
+        base) 
+            add_base_component 
+            return $?
+            ;;
+        *)
+            err "unknown component: '$component'"
+            ;;
+    esac
+
+    tmp_dir=$(mktemp -d)
+    [ $? -gt 0 ] && err "add_component ($LINENO): could not create temporary directory"
+    
+    fetch_component $component $tmp_dir || \
+        cleanup_and_err "add_component ($LINENO): could not download component '$component'"
+
+    echo "Extracting $component"
+    tar -xf "${tmp_dir}/${component}.txz" -C $(dir_for_base_part ro) || \
+        cleanup_and_err "add_component ($LINENO): error while extracting ${component}"
+
+    cleanup
+    echo "Finished adding component '$component'"
+}
+
+# Takes any number of components as its arguments and installs them into the
+# read only base filesystem
+add_components() {
+    for component; do
+        add_component $component
+    done
+}
+
 
 # Prepares the system for running jails,
 # $1: directory to which the jail skeleton is installed
@@ -407,12 +452,13 @@ prepare() {
     }
 
     for p in ro rw; do
-        has_base_part $p && \
+        has_component $p && \
             err "Read only base filesystem already exists at $(dir_for_base_part $p)"
     done
 
     for p in ro rw; do
-        mkdir -p $(dir_for_base_part $p) || err "Error while creating $checkdir"
+        mkdir -p $(dir_for_base_part $p) || \
+            cleanup_and_err "Error while creating $checkdir"
     done
 
     echo "Downloading distribution archives... "
@@ -425,15 +471,18 @@ prepare() {
 
     echo "Extracting base jail... " 
     for file in $files; do
-        for $p in ro rw; do
-            extract ${tmp_dir}/${file} $p || \
+        for p in ro rw; do
+            extract_base ${tmp_dir}/${file} $p || \
                 cleanup_and_err "Error while extracting ${tmp_dir}/${file}"
         done
     done
 
+    echo "Creating default template... "
     create_template default
 
+    echo "Cleaning up... "
     cleanup
+    echo "Successfully prepared ello-jail for use"
 }
 
 
@@ -501,6 +550,9 @@ case $command in
         ;;
     "create-template")
         create_template $@
+        ;;
+    "add-components")
+        add_components $@
         ;;
     "upgrade")
         upgrade
