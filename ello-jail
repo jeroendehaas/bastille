@@ -100,7 +100,7 @@ chflag_and_rm() {
         rm -rf $1 > /dev/null 2>&1
 }
 
-clone_raw() {
+clone() {
     local from=$1
     local what=$2
     local to=$3
@@ -109,9 +109,9 @@ clone_raw() {
     tar $@ -f - -C $from -c $what | tar -xf - -p -C $to
 }
 
-clone_base() {
+clone_from_base() {
     [ "$1" = "ro" ] || [ "$1" = "rw" ] ||
-        err "clone_base ($LINENO): first argument must be ro or rw"
+        err "clone_from_base ($LINENO): first argument must be ro or rw"
     local part=$1
 
     local from_dir=$jails_dir/base-$part
@@ -120,7 +120,15 @@ clone_base() {
 
     shift 3
 
-    clone_raw $from_dir $what $to_dir $@
+    clone$from_dir $what $to_dir $@
+}
+
+clone_from_base_rw() {
+    clone_from_base_rw $@
+}
+
+clone_from_base_ro() {
+    clone_from_base_ro $@
 }
 
 # Merges the contents of a template into a jail
@@ -132,7 +140,7 @@ merge_template() {
     local jail_name=$1
     local template_name=${2:-default}
 
-    clone_raw $(dir_for_template $template_name) . $(dir_for_jail $jail_name)
+    clone $(dir_for_template $template_name) . $(dir_for_jail $jail_name)
 }
 
 create_template() {
@@ -150,12 +158,12 @@ create_template() {
     mkdir -p $t_root || \
         cleanup_and_err "create_template ($LINENO): Could not create template directory $t_root"
 
-    clone_base rw "etc" $t_root -n || \
+    clone_from_base_rw "etc" $t_root -n || \
         cleanup_and_err "create_template ($LINENO): Could not create etc directory"
-    clone_raw "/" "etc/localtime" "$t_root" || \
+    clone "/" "etc/localtime" "$t_root" || \
         warn "create_template ($LINENO): Could not copy /etc/localtime to template. \
             Remember to set the correct timezone manually."
-    clone_base rw "etc/master.passwd" $t_root && \
+    clone_from_base_rw "etc/master.passwd" $t_root && \
         sed -E 's/^(root|toor):[^:]*:/\1:*:/g' $t_root/etc/master.passwd | tee $t_root/etc/master.passwd || \
         warn "create_template ($LINENO): Could not disable root password based logins."
 }
@@ -182,7 +190,7 @@ create_jail() {
     # Ensure that usr in our new jail has the same permissions as usr in base-ro
     # The -n option forces tar to operate non-recursively, i.e. to only copy the
     # usr directory, not its contents
-    clone_base ro usr $dest_dir || \
+    clone_from_base_ro usr $dest_dir || \
         cleanup_and_err "create_jail ($LINENO): Error while cloning the usr directory."
     
     for ro_dir in $READ_ONLY_DIRS; do
@@ -191,7 +199,7 @@ create_jail() {
         ln -s /ro/$target $dest_dir/$target
     done
 
-    clone_base rw . $dest_dir || \
+    clone_from_base_rw . $dest_dir || \
         cleanup_and_err "create_jail ($LINENO): Error while cloning writable filesystem."
 
     # Finally merge template
