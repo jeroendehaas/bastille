@@ -3,6 +3,11 @@
 readonly CONFIG_LOCATION=/usr/local/etc/ello-jail
 [ -r $CONFIG_LOCATION ] && . $CONFIG_LOCATION
 
+# Set defaults
+: ${jails_dir:="/storage/jails"}
+: ${templates_dir:="$jails_dir/templates"}
+
+
 
 err() {
     echo "Error: " $@ 1>&2
@@ -12,6 +17,17 @@ err() {
 warn() {
     echo "Warning: " $@ 1>&2
 }
+
+dir_for_jail() {
+    [ ! $# = 1 ] && err "dir_for_jail expects one argument"
+    echo $jails_dir/$1
+}
+
+dir_for_template() {
+    [ ! $# = 1 ] && err "dir_for_template expects one argument"
+    echo $templates_dir/$1
+}
+
 
 download() {
     local target=${1##*/}
@@ -85,7 +101,6 @@ chflag_and_rm() {
 }
 
 clone_raw() {
-    echo $@
     local from=$1
     local what=$2
     local to=$3
@@ -94,11 +109,9 @@ clone_raw() {
     tar $@ -f - -C $from -c $what | tar -xf - -p -C $to
 }
 
-clone() {
-    local jails_dir=/storage/jails
-
+clone_base() {
     [ "$1" = "ro" ] || [ "$1" = "rw" ] ||
-        err "clone ($LINENO): first argument must be ro or rw"
+        err "clone_base ($LINENO): first argument must be ro or rw"
     local part=$1
 
     local from_dir=$jails_dir/base-$part
@@ -110,29 +123,48 @@ clone() {
     clone_raw $from_dir $what $to_dir $@
 }
 
+# Merges the contents of a template into a jail
+# $1 should contain the jail name
+# $2 is an optional template name, if omitted 'default' is used
+merge_template() {
+    [ $# -lt 1 ] && err "merge_template requires at least one argument"
+
+    local jail_name=$1
+    local template_name=${2:-default}
+
+    clone_raw $(dir_for_template $template_name) . $(dir_for_jail $jail_name)
+}
+
 create_template() {
-    local jails_dir=/storage/jails
-    local templates_dir=$jails_dir/templates
     local template_name=$1
-    local dest_dir=$templates_dir/$template_name
+    local t_root=$(dir_for_template $template_name)
 
-    [ -d "$dest_dir" ] && \
-        err "create_template ($LINENO): Cannot create template \"${template_name}\", $dest_dir exists"
+    cleanup_and_err() {
+        rm -rf $t_root > /dev/null 2>&1
+        err $@
+    }
 
-    mkdir -p $dest_dir || \
-        err "create_template ($LINENO): Could not create template directory $dest_dir"
+    [ -d "$t_root" ] && \
+        cleanup_and_err "create_template ($LINENO): Cannot create template \"${template_name}\", $t_root exists"
 
-    clone rw "etc" $dest_dir -n
-    clone_raw "/" "etc/localtime" "$dest_dir"
-    clone rw "etc/master.passwd" $dest_dir
-    # XXX: disable root passwords by default
+    mkdir -p $t_root || \
+        cleanup_and_err "create_template ($LINENO): Could not create template directory $t_root"
+
+    clone_base rw "etc" $t_root -n || \
+        cleanup_and_err "create_template ($LINENO): Could not create etc directory"
+    clone_raw "/" "etc/localtime" "$t_root" || \
+        warn "create_template ($LINENO): Could not copy /etc/localtime to template. \
+            Remember to set the correct timezone manually."
+    clone_base rw "etc/master.passwd" $t_root && \
+        sed -E 's/^(root|toor):[^:]*:/\1:*:/g' $t_root/etc/master.passwd | tee $t_root/etc/master.passwd || \
+        warn "create_template ($LINENO): Could not disable root password based logins."
 }
 
 
 create_jail() {
-    local jails_dir=/storage/jails
     local jail_name=$1
-    local dest_dir=$jails_dir/$jail_name 
+    local dest_dir=$(dir_for_jail $jail_name)
+    local jail_template=${2:-'default'}
     local base_dir=""
     local target=""
     local ro_dir=""
@@ -150,7 +182,7 @@ create_jail() {
     # Ensure that usr in our new jail has the same permissions as usr in base-ro
     # The -n option forces tar to operate non-recursively, i.e. to only copy the
     # usr directory, not its contents
-    tar -nf - -C $jails_dir/base-ro -c usr | tar -xp -f - -C $dest_dir || \
+    clone_base ro usr $dest_dir || \
         cleanup_and_err "create_jail ($LINENO): Error while cloning the usr directory."
     
     for ro_dir in $READ_ONLY_DIRS; do
@@ -159,8 +191,11 @@ create_jail() {
         ln -s /ro/$target $dest_dir/$target
     done
 
-    tar -f - -C $jails_dir/base-rw -c . | tar -xp -f - -C $dest_dir || \
+    clone_base rw . $dest_dir || \
         cleanup_and_err "create_jail ($LINENO): Error while cloning writable filesystem."
+
+    # Finally merge template
+    merge_template $jail_name $jail_template
 
     # write config
     cat > /etc/jail.conf <<EOF
@@ -285,24 +320,29 @@ if [ "$#" -lt 1 ]; then
     usage
 fi
 
-case $1 in
+command=${1:-usage}
+shift
+case $command in
     "prepare")
-        prepare
+        prepare $@
         ;;
     "extract")
-        extract w00t /storage/jails rw
+        extract $@
         ;;
     "create")
-        create_jail $2
+        create_jail $@
         ;;
     "create-template")
-        create_template $2
+        create_template $@
         ;;
     "upgrade")
         upgrade
         ;;
+    "usage")
+        usage
+        ;;
     *)
-        err "Unknown function \"${1}\""
+        err "Unknown function \"${command}\""
         usage
         ;;
 esac
