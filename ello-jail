@@ -6,6 +6,7 @@ readonly CONFIG_LOCATION=/usr/local/etc/ello-jail
 # Set defaults
 : ${jails_dir:="/storage/jails"}
 : ${templates_dir:="$jails_dir/templates"}
+: ${base_dir:="$jails_dir/base"}
 
 
 
@@ -18,14 +19,26 @@ warn() {
     echo "Warning: " $@ 1>&2
 }
 
+# empty_dir returns successfully if its first argument
+# is an empty directory
+empty_dir() {
+    [ $# = 1 ] || err "empty_dir expects one argument"
+    [ -z $(ls -A $1) ]
+}
+
 dir_for_jail() {
-    [ ! $# = 1 ] && err "dir_for_jail expects one argument"
+    [ $# = 1 ] || err "dir_for_jail expects one argument"
     echo $jails_dir/$1
 }
 
 dir_for_template() {
-    [ ! $# = 1 ] && err "dir_for_template expects one argument"
+    [ $# = 1 ] || err "dir_for_template expects one argument"
     echo $templates_dir/$1
+}
+
+dir_for_base_part() {
+    [ $# = 1 ] || err "dir_for_base_part expects one argument"
+    echo $base_dir/$1
 }
 
 
@@ -125,11 +138,19 @@ readonly READ_ONLY_DIRS="./COPYRIGHT \
                          ./usr/share/* \
                          ./usr/src/*"
 
-extract() {
-    [ "$#" -lt 3 ] && err "extract (${LINENO}): expecting 3 arguments"
+# has_base_part returns successfully if its first argument is a non-empty directory
+# in the directory $base_dir. 
+has_base_part() {
+    [ "$#" = 1 ] || err "has_base_part expects one argument"
+    local target=$(dir_for_base_part $1)
+    [ -d $target ] && ! empty_dir $target
+}
+
+
+extract_base() {
+    [ "$#" -lt 2 ] && err "extract (${LINENO}): expecting 2 arguments"
     local archive=$1
-    local destdir=$2
-    local part=$3
+    local part=$2
     local option=""
     
     case $part in 
@@ -145,15 +166,15 @@ extract() {
         for (i = 1; i <= NF; i++)
             printf "--'$option'=%s ", $i }'`
 
-    tar -xf $archive $inclusion_pattern -C $destdir/base-$part
+    tar -xf $archive $inclusion_pattern -C $(dir_for_base_part $part)
 }
 
 extract_rw() {
-    extract $1 $2 rw
+    extract_base $1 rw
 }
 
 extract_ro() {
-    extract $1 $2 ro
+    extract_base $1 ro
 }
 
 
@@ -172,6 +193,10 @@ clone() {
 }
 
 clone_from_base() {
+    [ $# -lt 3 ] && err "clone_from_base requires at least 3 arguments"
+    local part=$1
+    has_base_part $part || err "clone_from_base ($LINENO): base part '$part' not installed"
+
     [ "$1" = "ro" ] || [ "$1" = "rw" ] ||
         err "clone_from_base ($LINENO): first argument must be ro or rw"
     local part=$1
@@ -238,10 +263,11 @@ create_jail() {
     local jail_hostname=''
     local jail_ipv4_addr=''
     local jail_ipv6_addr=''
+    local quiet="false"
 
 
     OPTIND=1
-    while getopts 'n:h:t:4:6:' arg; do
+    while getopts 'n:h:t:4:6:q' arg; do
         case $arg in
             n)
                 jail_name=$OPTARG
@@ -257,6 +283,9 @@ create_jail() {
                 ;;
             6)
                 jail_ipv6_addr=$OPTARG
+                ;;
+            q)
+                quiet="true"
                 ;;
         esac
     done
@@ -285,14 +314,13 @@ create_jail() {
 
 
     cat <<EOF
-About to create a jail
+About to create a jail:
     name:           $jail_name
     hostname:       $jail_hostname
     template:       $jail_template
     jail_ipv4_addr: $jail_ipv4_addr
     jail_ipv6_addr: $jail_ipv6_addr
 EOF
-    exit 0
 
     local dest_dir=$(dir_for_jail $jail_name)
     local base_dir=""
@@ -304,10 +332,15 @@ EOF
         err $@
     }
 
+    say() {
+        $quiet || echo $@
+    }
+
     [ -d "$dest_dir" ] && \
         err "create_jail ($LINENO): Cannot create a jail named \"${jail_name}\", $dest_dir exists"
 
 
+    say "Initializing read only filesystem..."
     mkdir -p $dest_dir/ro
     # Ensure that usr in our new jail has the same permissions as usr in base-ro
     # The -n option forces tar to operate non-recursively, i.e. to only copy the
@@ -322,19 +355,23 @@ EOF
         ln -s /ro/$target $dest_dir/$target
     done
 
+    say "Initializing writable filesystem..."
     clone_from_base_rw . $dest_dir || \
         cleanup_and_err "create_jail ($LINENO): Error while cloning \
             writable filesystem."
 
     # Finally merge template
+    say "Merging template '$jail_template' with writable filesystem..."
     merge_template $jail_name $jail_template
 
     # write config
+    say "Writing configuration to /etc/jail.conf..."
     cat >> /etc/jail.conf <<EOF
 $jail_name {
-    host.hostname="$jail_name";
+    host.hostname="$jail_hostname";
     mount="$jails_dir/base-ro $dest_dir/ro nullfs ro 0 0";
-    ip4.addr="10.0.2.100";
+    ip4.addr="$jail_ipv4_addr";
+    ip6.addr="$jail_ipv6_addr";
     exec.start="/bin/sh /etc/rc";
     exec.stop="/bin/sh /etc/rc.shutdown";
     mount.devfs;
@@ -342,6 +379,7 @@ $jail_name {
     path="$dest_dir";
 }
 EOF
+    say "Jail '$jail_name' succcessfully created."
 }
 
 # Prepares the system for running jails,
@@ -349,8 +387,8 @@ EOF
 # $2: release of the jail
 # $3: mirror
 prepare() {
-    local destdir=${1:-/storage/jails}
-    local release=${2:-$(uname -r)}
+    local destdir=$jails_dir
+    local release=`uname -r`
     local mirror=${3:-"http://ftp.nl.freebsd.org/os/FreeBSD/releases/$(uname -m)/${release}"}
     local files="base.txz"
     local tmp_dir=""
@@ -362,41 +400,38 @@ prepare() {
     cleanup_and_err() {
         cleanup
         for i in rw ro; do
-            j="$destdir/base-$i"
+            j=$(dir_for_base_part $i)
             [ -d "$j" ] && chflag_and_rm $j
         done
         err $@
     }
 
-    for checkdir in $destdir/base-rw $destdir/base-ro; do
-        [ -d "$checkdir" ] && \
-            [ -n "$(ls -I $checkdir)" ] && \
-            err "$checkdir already exists"
-    done
-    
-    for checkdir in $destdir/base-rw $destdir/base-ro; do
-        mkdir -p $checkdir || err "Error while creating $checkdir" 1
+    for p in ro rw; do
+        has_base_part $p && \
+            err "Read only base filesystem already exists at $(dir_for_base_part $p)"
     done
 
-    echo -n "Downloading distribution archives... "
+    for p in ro rw; do
+        mkdir -p $(dir_for_base_part $p) || err "Error while creating $checkdir"
+    done
+
+    echo "Downloading distribution archives... "
     tmp_dir=$(mktemp -d)
     for file in $files; do
         tmp_file="${tmp_dir}/${file}"
         download "${mirror}/${file}" $tmp_file /home/jeroen || \
-            cleanup_and_err "Error while fetching ${mirror}/${file}.txz" 1
+            cleanup_and_err "Error while fetching ${mirror}/${file}.txz"
     done
-    echo "done."
 
-    echo -n "Extracting base jail... " 
+    echo "Extracting base jail... " 
     for file in $files; do
-        for part in ro rw; do
-            extract ${tmp_dir}/${file} $destdir $part || \
-                cleanup_and_err "Error while extracting ${tmp_dir}/${file}" 1
+        for $p in ro rw; do
+            extract ${tmp_dir}/${file} $p || \
+                cleanup_and_err "Error while extracting ${tmp_dir}/${file}"
         done
     done
-    echo "done."
 
-    create_template default $1 
+    create_template default
 
     cleanup
 }
