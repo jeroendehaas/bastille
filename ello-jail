@@ -105,8 +105,8 @@ warn() {
 # empty_dir returns successfully if its first argument
 # is an empty directory
 empty_dir() {
-    [ $# = 1 ] || err "empty_dir expects one argument"
-    [ -z $(ls -A $1) ]
+    [ "$#" = 1 ] || err "empty_dir expects one argument"
+    [ -z "$(ls -A $1)" ]
 }
 
 dir_for_jail() {
@@ -234,13 +234,13 @@ readonly READ_ONLY_DIRS="./COPYRIGHT \
 has_base_part() {
     [ "$#" = 1 ] || err "has_base_part expects one argument"
     local target=$(dir_for_base_part $1)
-    [ -d $target ] && ! empty_dir $target
+    [ -d "$target" ] && ! empty_dir $target
 }
 
 # Checks if ello_jail_dir contains at least a ro and rw
 # base part
 is_not_prepared() {
-    [ ! has_base_part ro ] || [ ! has_base_part rw ]
+    ! has_base_part ro || ! has_base_part rw
 }
 
 
@@ -630,15 +630,18 @@ upgrade() {
 
 usage() {
     cat <<EOF
-Usage: `basename $0` command [options]
+Usage: `basename $0` [options] command
 
 Global options:
-    -${ELLO_JAIL_ELLO_JAIL_DIR_OPT%:} ello-jail-dir    -- Directory where to put and look for
-                           the jail base filesystem and templates
-                           (default: /usr/local/ello-jail)
-    -${ELLO_JAIL_JAIL_PATH_OPT%:} jails-dir        -- Directory where to put and look for
-                           jails
+    -${ELLO_JAIL_ELLO_JAIL_DIR_OPT%:} ello-jail-dir    -- Directory where to put and look for the jail base filesystem 
+                           and templates (default: /usr/local/ello-jail)
+    -${ELLO_JAIL_JAIL_PATH_OPT%:} jails-dir        -- Directory where to put and look for jails
                            (default: /usr/local/ello-jail/jails)
+    -${ELLO_JAIL_RELEASE_OPT%:} release          -- Release level of which to download the system components (when 
+                           used with prepare) or to which to upgrade the jail base filesystem 
+                           (when used with upgrade). Defaults to the release level of the host 
+                           system
+    -${ELLO_JAIL_MIRROR_OPT%:} mirror           -- Mirror from which to download system components.
 Commands:
     prepare             -- Install the base jail filesystem and templates to 
                            ello-jail-dir
@@ -657,8 +660,9 @@ if [ "$#" -lt 1 ]; then
     usage
 fi
 
-command=${1:-usage}
-shift
+# The command should be the last argument given to this script
+command=""
+for command; do :; done
 
 # Parse global options first
 OPTIND=1
@@ -673,7 +677,7 @@ done
 
 
 
-case $command in
+case "$command" in
     prepare|usage) ;;
     *)
         if is_not_prepared; then
