@@ -1,20 +1,63 @@
 #!/bin/sh
 
+# This script uses two global variables
+# 1) ello_jail_dir points to the installation of ello-jail.
+#       It is this directory that contains the base components
+#       and jail templates
+# 2) jail_path is the directory in which the script will create
+#       jails
+
+
 readonly CONFIG_LOCATION=/usr/local/etc/ello-jail
 [ -r $CONFIG_LOCATION ] && . $CONFIG_LOCATION
 
-# Set defaults
-: ${jails_dir:="/storage/jails"}
-: ${templates_dir:="$jails_dir/templates"}
-: ${base_dir:="$jails_dir/base"}
+ELLO_JAIL_GLOBAL_OPTS='b:d:'
+ELLO_JAIL_USER_CHANGED_JAIL_PATH=""
+
+
+# Changes the ello_jail_dir variable to its first argument
+set_ello_jail_dir() {
+    ello_jail_dir=$1
+    base_dir="$ello_jail_dir/base"
+    templates_dir="$ello_jail_dir/templates"
+    [ -z "$ELLO_JAIL_USER_CHANGED_JAIL_PATH" ] && \
+        set_jail_path "$ello_jail_dir/jails"
+}
+
+# Changes the jail_path variable to its first argument
+set_jail_path() {
+    jail_path=$1
+}
+
+set_jail_path_to_user_value() {
+    set_jail_path $1
+    ELLO_JAIL_USER_CHANGED_JAIL_PATH="true"
+}
+
+[ -n "$ello_jail_dir" ] ||  set_ello_jail_dir '/usr/local/ello-jail'
+[ -n "$jail_path" ] || set_jail_path "$ello_jail_dir/jails"
+
 
 err() {
-    echo "Error: " $@ 1>&2
+    echo "Error:" $@ 1>&2
     exit 1
 }
 
 warn() {
     echo "Warning: " $@ 1>&2
+}
+
+# Stops the execution of this script if ello-jail was not prepared correctly.
+# This is the case if $base_dir/ro or $base_dir/rw are empty
+stop_if_not_prepared() {
+    local check_dir
+    for p in ro rw; do
+        check_dir=$(dir_for_base_part $p)
+        if [ ! -d "$check_dir" ] || empty_dir $check_dir; then
+            err "$check_dir does not exist. Perhaps you forgot to run 'ello-jail prepare'?"
+        fi
+    done
+    true
 }
 
 # empty_dir returns successfully if its first argument
@@ -26,7 +69,23 @@ empty_dir() {
 
 dir_for_jail() {
     [ $# = 1 ] || err "dir_for_jail expects one argument"
-    echo $jails_dir/$1
+    local jail_name=$1
+
+    # awk outputs only the block belonging to the jail
+    # grep filters out the path parameter
+    # sed outputs the value between quotes to stdout
+    local dir_to_jail=$(awk '/'$jail_name'[ ]*\{/, /.*\}.*/' /etc/jail.conf | \
+                        grep path | \
+                        sed -E 's/.*"(.*)".*;.*/\1/g')
+
+    # if no match is found, the jail might not have been created
+    # in which case we default to a subdirectory with the jail's name
+    # inside $jail_path
+    if [ $? -gt 0 ] || [ -z "$dir_to_jail" ]; then 
+        dir_to_jail=$jail_path/$jail_name;
+    fi
+
+    echo $dir_to_jail
 }
 
 dir_for_template() {
@@ -205,6 +264,7 @@ clone_from_base_ro() {
     clone_from_base ro $@
 }
 
+
 # Merges the contents of a template into a jail
 # $1 should contain the jail name
 # $2 is an optional template name, if omitted 'default' is used
@@ -255,7 +315,7 @@ create_jail() {
 
 
     OPTIND=1
-    while getopts 'n:h:t:4:6:q' arg; do
+    while getopts $ELLO_JAIL_GLOBAL_OPTS'n:h:t:4:6:q' arg; do
         case $arg in
             n)
                 jail_name=$OPTARG
@@ -432,7 +492,6 @@ add_components() {
 # $2: release of the jail
 # $3: mirror
 prepare() {
-    local destdir=$jails_dir
     local release=`uname -r`
     local mirror=${3:-"http://ftp.nl.freebsd.org/os/FreeBSD/releases/$(uname -m)/${release}"}
     local files="base.txz"
@@ -487,7 +546,6 @@ prepare() {
 
 
 upgrade() {
-    local jails_dir=/storage/jails
     local log_file=/var/log/ello-jail-upgrade
     local target=""
     local cycles=0
@@ -499,18 +557,18 @@ upgrade() {
         err $@
     }
 
-    for i in ro rw; do
-        [ -d "${jails_dir}/base-${i}" ] || \
-            cleanup_and_err "upgrade ($LINENO): $jails_dir/base-$i not found. Did you configure ello-jail?" 1
-    done
+    has_base_part ro && has_base_part rw || \
+        cleanup_and_err "upgrade ($LINENO): base system not found. \
+            Did you forget to run 'ello-jail prepare'?"
 
     : > $log_file
-    echo -n 'Updating base...'
+    echo -n 'Updating base'
     for i in ro rw; do
-        target=$jails_dir/base-$i
+        target=$(dir_for_base_part $i)
+        echo $target
         echo -n '.'
         echo 'y' | PAGER=cat freebsd-update upgrade -b $target -r 10.1-RC4 > $log_file 2>&1 || \
-            cleanup_and_err "upgrade ($LINENO): Error while fetching upgrade" 1
+            cleanup_and_err "upgrade ($LINENO): Error while fetching upgrade"
 
         cycles=0
         while [ $? -eq 0 ]; do
@@ -519,17 +577,38 @@ upgrade() {
             PAGER=cat freebsd-update install -b $target > $log_file 2>&1
         done
     done
-    echo 'done'
+    echo ' done'
 
     if [ $cycles -gt 1 ]; then # We need to update the individual jails as well for changes in configuration files
+        # TODO: Update individual jails
     fi
 
     cleanup
 }
 
 usage() {
-    err "ello-jail: prepare"
-    exit
+    cat <<EOF
+Usage: `basename $0` command [options]
+
+Global options:
+    -b ello-jail-dir    -- Directory where to put and look for
+                           the jail base filesystem and templates
+                           (default: /usr/local/ello-jail)
+    -d jails-dir        -- Directory where to put and look for
+                           jails
+                           (default: /usr/local/ello-jail/jails)
+Commands:
+    prepare             -- Install the base jail filesystem and templates to 
+                           ello-jail-dir
+    create-jail         -- Create a new jail
+    create-template     -- Create a new template
+    add-components      -- Install additional system components into the base
+                           jail filesystem. 
+    upgrade             -- Upgrade the base jail filesystem to a newer release,
+                           using freebsd-update(8)
+    usage               -- Display this message
+EOF
+    exit 0
 }
 
 if [ "$#" -lt 1 ]; then
@@ -538,6 +617,29 @@ fi
 
 command=${1:-usage}
 shift
+
+# Parse global options first
+OPTIND=1
+while getopts $ELLO_JAIL_GLOBAL_OPTS arg; do
+    case $arg in
+        d)
+            set_jail_path_to_user_value $OPTARG
+            ;;
+        b)
+            set_ello_jail_dir $OPTARG
+            ;;
+    esac
+done
+
+
+
+case $command in
+    prepare|usage) ;;
+    *)
+        stop_if_not_prepared
+        ;;
+esac
+
 case $command in
     "prepare")
         prepare $@
