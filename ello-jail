@@ -9,33 +9,88 @@
 
 
 readonly CONFIG_LOCATION=/usr/local/etc/ello-jail
-[ -r $CONFIG_LOCATION ] && . $CONFIG_LOCATION
 
-ELLO_JAIL_GLOBAL_OPTS='b:d:'
+
 ELLO_JAIL_USER_CHANGED_JAIL_PATH=""
+
+readonly ELLO_JAIL_ELLO_JAIL_DIR_OPT='b:'
+readonly ELLO_JAIL_JAIL_PATH_OPT='d:'
+readonly ELLO_JAIL_MIRROR_OPT='m:'
+readonly ELLO_JAIL_RELEASE_OPT='r:'
+
+readonly ELLO_JAIL_GLOBAL_OPTS="${ELLO_JAIL_ELLO_JAIL_DIR_OPT}\
+${ELLO_JAIL_JAIL_PATH_OPT}${ELLO_JAIL_MIRROR_OPT}${ELLO_JAIL_RELEASE_OPT}"
 
 
 # Changes the ello_jail_dir variable to its first argument
 set_ello_jail_dir() {
     ello_jail_dir=$1
-    base_dir="$ello_jail_dir/base"
-    templates_dir="$ello_jail_dir/templates"
-    [ -z "$ELLO_JAIL_USER_CHANGED_JAIL_PATH" ] && \
-        set_jail_path "$ello_jail_dir/jails"
+    set_jail_path "$ello_jail_dir/jails"
+}
+
+# echoes the ello_jail_dir to stdout
+get_ello_jail_dir() {
+    echo $ello_jail_dir
 }
 
 # Changes the jail_path variable to its first argument
 set_jail_path() {
-    jail_path=$1
+    [ -z "$ELLO_JAIL_USER_CHANGED_JAIL_PATH" ] && \
+        jail_path=$1
 }
 
 set_jail_path_to_user_value() {
+    ELLO_JAIL_USER_CHANGED_JAIL_PATH=''
     set_jail_path $1
     ELLO_JAIL_USER_CHANGED_JAIL_PATH="true"
 }
 
-[ -n "$ello_jail_dir" ] ||  set_ello_jail_dir '/usr/local/ello-jail'
-[ -n "$jail_path" ] || set_jail_path "$ello_jail_dir/jails"
+get_jail_path() {
+    echo $jail_path
+}
+
+
+# echoes the directory in which to store the base filesystems to
+# stdout
+get_base_dir() {
+    echo "$(get_ello_jail_dir)/base"
+}
+
+# echoes the directory in which to look for and store templates
+# to stdout
+get_templates_dir() {
+    echo "$(get_ello_jail_dir)/templates"
+}
+
+
+# Sets the global mirror option to the first argument
+set_mirror() {
+    ello_jail_mirror=$1
+}
+
+# echoes the chosen mirror to stdout
+get_mirror() {
+    echo $ello_jail_mirror
+}
+
+# Set the FreeBSD release version which to fetch
+set_release() {
+    ello_jail_freebsd_release=$1
+}
+
+# echoes the jails' freebsd release version to stdout
+get_release() {
+    echo $ello_jail_freebsd_release
+}
+
+# Load configuration
+[ -r $CONFIG_LOCATION ] && . $CONFIG_LOCATION
+
+
+[ -n "$(get_ello_jail_dir)" ] ||  set_ello_jail_dir '/usr/local/ello-jail'
+[ -n "$(get_jail_path)" ] || set_jail_path "$ello_jail_dir/jails"
+[ -n "$(get_mirror)" ] || set_mirror 'ftp.nl.freebsd.org'
+[ -n "$(get_release)" ] || set_release `uname -r`
 
 
 err() {
@@ -45,19 +100,6 @@ err() {
 
 warn() {
     echo "Warning: " $@ 1>&2
-}
-
-# Stops the execution of this script if ello-jail was not prepared correctly.
-# This is the case if $base_dir/ro or $base_dir/rw are empty
-stop_if_not_prepared() {
-    local check_dir
-    for p in ro rw; do
-        check_dir=$(dir_for_base_part $p)
-        if [ ! -d "$check_dir" ] || empty_dir $check_dir; then
-            err "$check_dir does not exist. Perhaps you forgot to run 'ello-jail prepare'?"
-        fi
-    done
-    true
 }
 
 # empty_dir returns successfully if its first argument
@@ -82,7 +124,7 @@ dir_for_jail() {
     # in which case we default to a subdirectory with the jail's name
     # inside $jail_path
     if [ $? -gt 0 ] || [ -z "$dir_to_jail" ]; then 
-        dir_to_jail=$jail_path/$jail_name;
+        dir_to_jail=$(get_jail_path)/$jail_name;
     fi
 
     echo $dir_to_jail
@@ -90,28 +132,20 @@ dir_for_jail() {
 
 dir_for_template() {
     [ $# = 1 ] || err "dir_for_template expects one argument"
-    echo $templates_dir/$1
+    echo $(get_templates_dir)/$1
 }
 
 dir_for_base_part() {
     [ $# = 1 ] || err "dir_for_base_part expects one argument"
-    echo $base_dir/$1
+    echo $(get_base_dir)/$1
 }
 
-
-download() {
-    local target=${1##*/}
-    local destdir=$2
-    local staging_area=${3%/}
-
-
-    local outfile=$staging_area/$target
-    if [ ! -r "$outfile" ]; then
-        fetch $1 -o $outfile
-    fi
-
-    cp $outfile $destdir
+# echoes the jails' base release number to stdout
+get_jail_base_release() {
+    local fv="$(dir_for_base_part ro)/bin/freebsd-version"
+    [ -x "$fv" ] && $fv || err "Could not determine the base jail's release information"
 }
+
 
 # is_valid_label returns successfully if its first argument contains
 # only English letters, hyphens and decimal digits.
@@ -196,11 +230,17 @@ readonly READ_ONLY_DIRS="./COPYRIGHT \
                          ./usr/src/*"
 
 # has_base_part returns successfully if its first argument is a non-empty directory
-# in the directory $base_dir 
+# in the base directory
 has_base_part() {
     [ "$#" = 1 ] || err "has_base_part expects one argument"
     local target=$(dir_for_base_part $1)
     [ -d $target ] && ! empty_dir $target
+}
+
+# Checks if ello_jail_dir contains at least a ro and rw
+# base part
+is_not_prepared() {
+    [ ! has_base_part ro ] || [ ! has_base_part rw ]
 }
 
 
@@ -223,7 +263,7 @@ extract_base() {
         for (i = 1; i <= NF; i++)
             printf "--'$option'=%s ", $i }'`
 
-    tar -xf $archive $inclusion_pattern -C $(dir_for_base_part $part)
+    tar -xpf $archive $inclusion_pattern -C $(dir_for_base_part $part)
 }
 
 
@@ -430,7 +470,7 @@ EOF
 }
 
 fetch_component() {
-    local mirror="http://ftp.nl.freebsd.org/os/FreeBSD/releases/$(uname -m)/$(uname -r)"
+    local mirror="http://$(get_mirror)/os/FreeBSD/releases/$(uname -m)/$(get_release)"
     fetch "$mirror/${1}.txz" -o "$2/${1}.txz"
 }
 
@@ -487,16 +527,16 @@ add_components() {
 }
 
 
+
 # Prepares the system for running jails,
 # $1: directory to which the jail skeleton is installed
 # $2: release of the jail
 # $3: mirror
 prepare() {
-    local release=`uname -r`
-    local mirror=${3:-"http://ftp.nl.freebsd.org/os/FreeBSD/releases/$(uname -m)/${release}"}
-    local files="base.txz"
     local tmp_dir=""
-
+    local local_dir=''
+    local files='base'
+    
     cleanup() {
         [ -d "$tmp_dir" ] && rm -rf $tmp_dir > /dev/null 2>&1
     }
@@ -509,9 +549,16 @@ prepare() {
         done
         err $@
     }
+cat <<-EOF
+About to install a base filesystem for ello-jail
+    base directory:         $(get_base_dir)
+    templates directory:    $(get_templates_dir)
+    release:                $(get_release)
+    mirror:                 $(get_mirror)
+EOF
 
     for p in ro rw; do
-        has_component $p && \
+        has_base_part $p && \
             err "Read only base filesystem already exists at $(dir_for_base_part $p)"
     done
 
@@ -523,15 +570,14 @@ prepare() {
     echo "Downloading distribution archives... "
     tmp_dir=$(mktemp -d)
     for file in $files; do
-        tmp_file="${tmp_dir}/${file}"
-        download "${mirror}/${file}" $tmp_file /home/jeroen || \
-            cleanup_and_err "Error while fetching ${mirror}/${file}.txz"
+        fetch_component 'base' $tmp_dir || \
+            cleanup_and_err "Error while fetching ${file}.txz"
     done
 
     echo "Extracting base jail... " 
     for file in $files; do
         for p in ro rw; do
-            extract_base ${tmp_dir}/${file} $p || \
+            extract_base ${tmp_dir}/${file}.txz $p || \
                 cleanup_and_err "Error while extracting ${tmp_dir}/${file}"
         done
     done
@@ -557,17 +603,13 @@ upgrade() {
         err $@
     }
 
-    has_base_part ro && has_base_part rw || \
-        cleanup_and_err "upgrade ($LINENO): base system not found. \
-            Did you forget to run 'ello-jail prepare'?"
-
     : > $log_file
     echo -n 'Updating base'
     for i in ro rw; do
         target=$(dir_for_base_part $i)
         echo $target
         echo -n '.'
-        echo 'y' | PAGER=cat freebsd-update upgrade -b $target -r 10.1-RC4 > $log_file 2>&1 || \
+        echo 'y' | UNAME_r=$(get_jail_base_release) get_base_PAGER=cat freebsd-update upgrade -b $target -r $(get_release) > $log_file 2>&1 || \
             cleanup_and_err "upgrade ($LINENO): Error while fetching upgrade"
 
         cycles=0
@@ -591,10 +633,10 @@ usage() {
 Usage: `basename $0` command [options]
 
 Global options:
-    -b ello-jail-dir    -- Directory where to put and look for
+    -${ELLO_JAIL_ELLO_JAIL_DIR_OPT%:} ello-jail-dir    -- Directory where to put and look for
                            the jail base filesystem and templates
                            (default: /usr/local/ello-jail)
-    -d jails-dir        -- Directory where to put and look for
+    -${ELLO_JAIL_JAIL_PATH_OPT%:} jails-dir        -- Directory where to put and look for
                            jails
                            (default: /usr/local/ello-jail/jails)
 Commands:
@@ -622,12 +664,10 @@ shift
 OPTIND=1
 while getopts $ELLO_JAIL_GLOBAL_OPTS arg; do
     case $arg in
-        d)
-            set_jail_path_to_user_value $OPTARG
-            ;;
-        b)
-            set_ello_jail_dir $OPTARG
-            ;;
+        $ELLO_JAIL_JAIL_PATH_OPT) set_jail_path_to_user_value $OPTARG;;
+        $ELLO_JAIL_ELLO_JAIL_DIR_OPT) set_ello_jail_dir $OPTARG;;
+        $ELLO_JAIL_RELEASE_OPT) set_release $OPTARG ;;
+        $ELLO_JAIL_MIRROR_OPT) set_mirror $OPTARG;;
     esac
 done
 
@@ -636,7 +676,9 @@ done
 case $command in
     prepare|usage) ;;
     *)
-        stop_if_not_prepared
+        if is_not_prepared; then
+            err "Could not find the base filesystem for jails. Did you run '`basename $0` prepare'?"
+        fi
         ;;
 esac
 
@@ -644,10 +686,7 @@ case $command in
     "prepare")
         prepare $@
         ;;
-    "extract")
-        extract $@
-        ;;
-    "create")
+    "create-jail")
         create_jail $@
         ;;
     "create-template")
