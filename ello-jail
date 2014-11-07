@@ -22,40 +22,53 @@ readonly ELLO_JAIL_GLOBAL_OPTS="${ELLO_JAIL_ELLO_JAIL_DIR_OPT}\
 ${ELLO_JAIL_JAIL_PATH_OPT}${ELLO_JAIL_MIRROR_OPT}${ELLO_JAIL_RELEASE_OPT}"
 
 
-# Changes the ello_jail_dir variable to its first argument
+# set_ello_jail_dir {{{1
+# sets the directory in which ello-jail looks for the base filesystem and
+# templates to the first argument
 set_ello_jail_dir() {
     ello_jail_dir=$1
     set_jail_path "$ello_jail_dir/jails"
 }
 
+# get_ello_jail_dir {{{1
 # echoes the ello_jail_dir to stdout
 get_ello_jail_dir() {
     echo $ello_jail_dir
 }
 
-# Changes the jail_path variable to its first argument
+# set_jail_path {{{1
+# changes the directory in which ello-jail looks for jails to the first
+# argument, unless the function set_jail_path_to_user_value was called
+# previously, in which case this function will do nothing.
 set_jail_path() {
     [ -z "$ELLO_JAIL_USER_CHANGED_JAIL_PATH" ] && \
         jail_path=$1
 }
 
+# set_jail_path_to_user_value {{{1
+# calls set_jail_path passing on the first argument. This function should be
+# used when a user explicitly sets a jail path. Once this function is called,
+# future calls to set_ello_jail_dir will not change the jail_path
 set_jail_path_to_user_value() {
     ELLO_JAIL_USER_CHANGED_JAIL_PATH=''
     set_jail_path $1
     ELLO_JAIL_USER_CHANGED_JAIL_PATH="true"
 }
 
+# get_jail_path {{{1
+# echoes the jail path to stdout
 get_jail_path() {
     echo $jail_path
 }
 
 
-# echoes the directory in which to store the base filesystems to
-# stdout
+# get_base_dir {{{1
+# echoes the directory in which to look for the base filesystems to stdout
 get_base_dir() {
     echo "$(get_ello_jail_dir)/base"
 }
 
+# get_templates_dir {{{1
 # echoes the directory in which to look for and store templates
 # to stdout
 get_templates_dir() {
@@ -63,27 +76,33 @@ get_templates_dir() {
 }
 
 
-# Sets the global mirror option to the first argument
+# set_mirror {{{1
+# sets the mirror used for downloading system components to the first argument
 set_mirror() {
     ello_jail_mirror=$1
 }
 
-# echoes the chosen mirror to stdout
+# get_mirror {{{1
+# echoes the mirror used for downloading system components to stdout
 get_mirror() {
     echo $ello_jail_mirror
 }
 
-# Set the FreeBSD release version which to fetch
+# set_release {{{1
+# set the FreeBSD release from which the system components should be fetched, or
+# to which the base system should be upgraded (when ello-jail upgrade is called)
 set_release() {
     ello_jail_freebsd_release=$1
 }
 
-# echoes the jails' freebsd release version to stdout
+# get_release {{{1
+# echoes the jails' FreeBSD release version to stdout
 get_release() {
     echo $ello_jail_freebsd_release
 }
+# }}}1
 
-# Load configuration
+# load configuration and initialize unset variables {{{1
 [ -r $CONFIG_LOCATION ] && . $CONFIG_LOCATION
 
 
@@ -93,22 +112,31 @@ get_release() {
 [ -n "$(get_release)" ] || set_release `uname -r`
 
 
+# err {{{1
+# echoes 'Error: ' followed by its arguments to stderr and exits
 err() {
     echo "Error:" $@ 1>&2
     exit 1
 }
 
+# warn {{{1
+# echoes 'Warning: ' followed by its arguments to stderr but does not exit
 warn() {
     echo "Warning: " $@ 1>&2
 }
 
-# empty_dir returns successfully if its first argument
-# is an empty directory
+# empty_dir {{{1
+# returns successfully if its first argument is an empty directory
 empty_dir() {
     [ "$#" = 1 ] || err "empty_dir expects one argument"
     [ -z "$(ls -A $1)" ]
 }
 
+# dir_for_jail {{{1
+# takes as its only argument the name of a jail and returns the directory for
+# that jail. If the jail has its path set in jail.conf, that is returned.
+# Otherwise a subdirectory of jail_path with the same name as the jail is
+# returned. 
 dir_for_jail() {
     [ $# = 1 ] || err "dir_for_jail expects one argument"
     local jail_name=$1
@@ -130,16 +158,23 @@ dir_for_jail() {
     echo $dir_to_jail
 }
 
+# dir_for_template {{{1
+# echoes to stdout the directory in which to look for or place a template
 dir_for_template() {
     [ $# = 1 ] || err "dir_for_template expects one argument"
     echo $(get_templates_dir)/$1
 }
 
+# dir_for_base_part {{{1
+# takes either ro or rw as its first argument and returns the directory in which
+# to put or look for the read-only or writable part of the base filesystem
+# respectively.
 dir_for_base_part() {
     [ $# = 1 ] || err "dir_for_base_part expects one argument"
     echo $(get_base_dir)/$1
 }
 
+# get_jail_base_release {{{1
 # echoes the jails' base release number to stdout
 get_jail_base_release() {
     local fv="$(dir_for_base_part ro)/bin/freebsd-version"
@@ -147,15 +182,17 @@ get_jail_base_release() {
 }
 
 
-# is_valid_label returns successfully if its first argument contains
-# only English letters, hyphens and decimal digits.
+# is_valid_label {{{1
+# returns successfully if its first argument contains only lower or upper case
+# letters in the range a-z, hyphens and decimal digits.
 is_valid_label() {
     local label=$1
     [ ${#label} -gt 0 ] && [ ${#label} -lt 64 ] && \
         echo $label | grep -qE '^[a-zA-Z0-9\-]+$'
 }
 
-# is_valid_hostname returns successfully if it is given a number (minimum 1) of
+# is_valid_hostname {{{1
+# returns successfully if, as its arguments, it is given a number (minimum 1) of
 # hostnames that are valid FQDN's. The function will return unsuccessfully if it
 # encounters an invalid FQDN, in which case its exit code equals the index of
 # the first invalid hostname
@@ -176,38 +213,42 @@ is_valid_hostname() {
     return 0
 }
 
-# is_valid_jailname returns successfully if its first argument does not contain
-# dots, spaces and forward slashes
+# is_valid_jailname {{{1
+# returns successfully if its first argument does not contain dots, spaces and 
+# forward slashes
 is_valid_jailname() {
     echo $1 | grep -qv '[\. /]'
 }
 
-# hostname_to_jailname translates a hostname into a jailname by replacing any
-# dots by underscores.
+# hostname_to_jailname {{{1 
+# translates a hostname into a jailname by replacing any dots by underscores.
 hostname_to_jailname() {
     echo $1 | sed -E 's/\.+/_/g'
 }
 
-# is_template returns successfully if its first argument is a directory inside
-# the templates directory
+# is_template {{{1
+# returns successfully if its first argument is a directory inside the templates 
+# directory. This directory can be empty.
 is_template() {
     [ -d "$templates_dir/$1" ]
 }
 
-# is_valid_ipv4_address_list returns successfully if its first argument can
-# be used to set the jail's ipv4.addr parameter
+# is_valid_ipv4_address_list {{{1
+# returns successfully if its first argument can be used to set the jail's 
+# ipv4.addr parameter
 is_valid_ipv4_address_list() {
     # TODO: Implement
     true
 }
 
-# is_valid_ipv6_address_list returns successfully if its first argument can
-# be used to set the jail's ipv6.addr parameter
+# is_valid_ipv6_address_list {{{1
+# returns successfully if its first argument can jail's ipv6.addr parameter
 is_valid_ipv6_address_list() {
     # TODO: Implement
     true
 }
 
+# READ_ONLY_DIRS {{{1 
 # A space-separated list of directories that belong to the read only part of the
 # base jail
 readonly READ_ONLY_DIRS="./COPYRIGHT \
@@ -229,21 +270,31 @@ readonly READ_ONLY_DIRS="./COPYRIGHT \
                          ./usr/share/* \
                          ./usr/src/*"
 
-# has_base_part returns successfully if its first argument is a non-empty directory
-# in the base directory
+# has_base_part {{{1
+# returns successfully if its first argument is a non-empty directory in the 
+# base directory
 has_base_part() {
     [ "$#" = 1 ] || err "has_base_part expects one argument"
     local target=$(dir_for_base_part $1)
     [ -d "$target" ] && ! empty_dir $target
 }
 
-# Checks if ello_jail_dir contains at least a ro and rw
-# base part
+# is_not_prepared {{{1
+# Checks if the base directory contains the read-only and writable base
+# filesystems
 is_not_prepared() {
     ! has_base_part ro || ! has_base_part rw
 }
 
-
+# extract_base {{{1
+# takes two arguments:
+# 1) the path to an archive containing the base system component (base.txz)
+# 2) a string that is either ro or rw indicating whether the read-only or 
+#    writable part should be extracted
+# 
+# Depending on the second argument the READ_ONLY_DIRS are either included or
+# excluded when extracting the archive.  The read-only part is extracted to 
+# dir_for_base_part ro, the writable part to dir_for_base_part rw.
 extract_base() {
     [ "$#" -lt 2 ] && err "extract (${LINENO}): expecting 2 arguments"
     local archive=$1
@@ -267,13 +318,17 @@ extract_base() {
 }
 
 
-
+# chflag_and_rm {{{1
+# recursively removes the schg flag from and then deletes the file referenced 
+# to by the first argument. The schg flag is set on some files within the base
+# filesystem, preventing those on which it is set from being deleted.
 chflag_and_rm() {
     [ -d $1 ] || return 0 
     chflags -R noschg $1 &&
         rm -rf $1 > /dev/null 2>&1
 }
 
+# clone {{{1
 clone() {
     local from=$1
     local what=$2
