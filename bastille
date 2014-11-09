@@ -724,10 +724,10 @@ for command; do :; done
 OPTIND=1
 while getopts $BASTILLE_GLOBAL_OPTS arg; do
     case $arg in
-        $BASTILLE_JAIL_PATH_OPT) set_jail_path_to_user_value $OPTARG;;
-        $BASTILLE_BASTILLE_DIR_OPT) set_bastille_dir $OPTARG;;
-        $BASTILLE_RELEASE_OPT) set_release $OPTARG ;;
-        $BASTILLE_MIRROR_OPT) set_mirror $OPTARG;;
+        "${BASTILLE_JAIL_PATH_OPT%':'}") set_jail_path_to_user_value $OPTARG;;
+        "${BASTILLE_BASTILLE_DIR_OPT%':'}") set_bastille_dir $OPTARG;;
+        "${BASTILLE_RELEASE_OPT%':'}") set_release $OPTARG ;;
+        "${BASTILLE_MIRROR_OPT%':'}") set_mirror $OPTARG;;
     esac
 done
 
