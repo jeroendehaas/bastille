@@ -1,58 +1,58 @@
 #!/bin/sh
-
+# vim:ts=4:sts=4:et:sw=4:foldmethod=marker:foldlevel=1
 # This script uses two global variables
-# 1) ello_jail_dir points to the installation of ello-jail.
+# 1) bastille_dir points to the installation of bastille.
 #       It is this directory that contains the base components
 #       and jail templates
 # 2) jail_path is the directory in which the script will create
 #       jails
 
 
-readonly CONFIG_LOCATION=/usr/local/etc/ello-jail
+readonly CONFIG_LOCATION=/usr/local/etc/bastille.conf
 
 
-ELLO_JAIL_USER_CHANGED_JAIL_PATH=""
+BASTILLE_USER_CHANGED_JAIL_PATH=""
 
-readonly ELLO_JAIL_ELLO_JAIL_DIR_OPT='b:'
-readonly ELLO_JAIL_JAIL_PATH_OPT='d:'
-readonly ELLO_JAIL_MIRROR_OPT='m:'
-readonly ELLO_JAIL_RELEASE_OPT='r:'
+readonly BASTILLE_BASTILLE_DIR_OPT='b:'
+readonly BASTILLE_JAIL_PATH_OPT='d:'
+readonly BASTILLE_MIRROR_OPT='m:'
+readonly BASTILLE_RELEASE_OPT='r:'
 
-readonly ELLO_JAIL_GLOBAL_OPTS="${ELLO_JAIL_ELLO_JAIL_DIR_OPT}\
-${ELLO_JAIL_JAIL_PATH_OPT}${ELLO_JAIL_MIRROR_OPT}${ELLO_JAIL_RELEASE_OPT}"
+readonly BASTILLE_GLOBAL_OPTS="${BASTILLE_BASTILLE_DIR_OPT}\
+${BASTILLE_JAIL_PATH_OPT}${BASTILLE_MIRROR_OPT}${BASTILLE_RELEASE_OPT}"
 
 
-# set_ello_jail_dir {{{1
-# sets the directory in which ello-jail looks for the base filesystem and
+# set_bastille_dir {{{1
+# sets the directory in which bastille looks for the base filesystem and
 # templates to the first argument
-set_ello_jail_dir() {
-    ello_jail_dir=$1
-    set_jail_path "$ello_jail_dir/jails"
+set_bastille_dir() {
+    bastille_dir=$1
+    set_jail_path "$bastille_dir/jails"
 }
 
-# get_ello_jail_dir {{{1
-# echoes the ello_jail_dir to stdout
-get_ello_jail_dir() {
-    echo $ello_jail_dir
+# get_bastille_dir {{{1
+# echoes the bastille_dir to stdout
+get_bastille_dir() {
+    echo $bastille_dir
 }
 
 # set_jail_path {{{1
-# changes the directory in which ello-jail looks for jails to the first
+# changes the directory in which bastille looks for jails to the first
 # argument, unless the function set_jail_path_to_user_value was called
 # previously, in which case this function will do nothing.
 set_jail_path() {
-    [ -z "$ELLO_JAIL_USER_CHANGED_JAIL_PATH" ] && \
+    [ -z "$BASTILLE_USER_CHANGED_JAIL_PATH" ] && \
         jail_path=$1
 }
 
 # set_jail_path_to_user_value {{{1
 # calls set_jail_path passing on the first argument. This function should be
 # used when a user explicitly sets a jail path. Once this function is called,
-# future calls to set_ello_jail_dir will not change the jail_path
+# future calls to set_bastille_dir will not change the jail_path
 set_jail_path_to_user_value() {
-    ELLO_JAIL_USER_CHANGED_JAIL_PATH=''
+    BASTILLE_USER_CHANGED_JAIL_PATH=''
     set_jail_path $1
-    ELLO_JAIL_USER_CHANGED_JAIL_PATH="true"
+    BASTILLE_USER_CHANGED_JAIL_PATH="true"
 }
 
 # get_jail_path {{{1
@@ -65,40 +65,40 @@ get_jail_path() {
 # get_base_dir {{{1
 # echoes the directory in which to look for the base filesystems to stdout
 get_base_dir() {
-    echo "$(get_ello_jail_dir)/base"
+    echo "$(get_bastille_dir)/base"
 }
 
 # get_templates_dir {{{1
 # echoes the directory in which to look for and store templates
 # to stdout
 get_templates_dir() {
-    echo "$(get_ello_jail_dir)/templates"
+    echo "$(get_bastille_dir)/templates"
 }
 
 
 # set_mirror {{{1
 # sets the mirror used for downloading system components to the first argument
 set_mirror() {
-    ello_jail_mirror=$1
+    bastille_mirror=$1
 }
 
 # get_mirror {{{1
 # echoes the mirror used for downloading system components to stdout
 get_mirror() {
-    echo $ello_jail_mirror
+    echo $bastille_mirror
 }
 
 # set_release {{{1
 # set the FreeBSD release from which the system components should be fetched, or
-# to which the base system should be upgraded (when ello-jail upgrade is called)
+# to which the base system should be upgraded (when bastille upgrade is called)
 set_release() {
-    ello_jail_freebsd_release=$1
+    bastille_freebsd_release=$1
 }
 
 # get_release {{{1
 # echoes the jails' FreeBSD release version to stdout
 get_release() {
-    echo $ello_jail_freebsd_release
+    echo $bastille_freebsd_release
 }
 # }}}1
 
@@ -106,8 +106,8 @@ get_release() {
 [ -r $CONFIG_LOCATION ] && . $CONFIG_LOCATION
 
 
-[ -n "$(get_ello_jail_dir)" ] ||  set_ello_jail_dir '/usr/local/ello-jail'
-[ -n "$(get_jail_path)" ] || set_jail_path "$ello_jail_dir/jails"
+[ -n "$(get_bastille_dir)" ] ||  set_bastille_dir '/usr/local/bastille'
+[ -n "$(get_jail_path)" ] || set_jail_path "$bastille_dir/jails"
 [ -n "$(get_mirror)" ] || set_mirror 'ftp.nl.freebsd.org'
 [ -n "$(get_release)" ] || set_release `uname -r`
 
@@ -410,7 +410,7 @@ create_jail() {
 
 
     OPTIND=1
-    while getopts $ELLO_JAIL_GLOBAL_OPTS'n:h:t:4:6:q' arg; do
+    while getopts $BASTILLE_GLOBAL_OPTS'n:h:t:4:6:q' arg; do
         case $arg in
             n)
                 jail_name=$OPTARG
@@ -605,7 +605,7 @@ prepare() {
         err $@
     }
 cat <<-EOF
-About to install a base filesystem for ello-jail
+About to install a base filesystem for bastille
     base directory:         $(get_base_dir)
     templates directory:    $(get_templates_dir)
     release:                $(get_release)
@@ -642,12 +642,12 @@ EOF
 
     echo "Cleaning up... "
     cleanup
-    echo "Successfully prepared ello-jail for use"
+    echo "Successfully prepared bastille for use"
 }
 
 
 upgrade() {
-    local log_file=/var/log/ello-jail-upgrade
+    local log_file=/var/log/bastille-upgrade
     local target=""
     local cycles=0
 
@@ -688,18 +688,18 @@ usage() {
 Usage: `basename $0` [options] command
 
 Global options:
-    -${ELLO_JAIL_ELLO_JAIL_DIR_OPT%:} ello-jail-dir    -- Directory where to put and look for the jail base filesystem 
-                           and templates (default: /usr/local/ello-jail)
-    -${ELLO_JAIL_JAIL_PATH_OPT%:} jails-dir        -- Directory where to put and look for jails
-                           (default: /usr/local/ello-jail/jails)
-    -${ELLO_JAIL_RELEASE_OPT%:} release          -- Release level of which to download the system components (when 
+    -${BASTILLE_BASTILLE_DIR_OPT%:} bastille-dir    -- Directory where to put and look for the jail base filesystem 
+                           and templates (default: /usr/local/bastille)
+    -${BASTILLE_JAIL_PATH_OPT%:} jails-dir        -- Directory where to put and look for jails
+                           (default: /usr/local/bastille/jails)
+    -${BASTILLE_RELEASE_OPT%:} release          -- Release level of which to download the system components (when 
                            used with prepare) or to which to upgrade the jail base filesystem 
                            (when used with upgrade). Defaults to the release level of the host 
                            system
-    -${ELLO_JAIL_MIRROR_OPT%:} mirror           -- Mirror from which to download system components.
+    -${BASTILLE_MIRROR_OPT%:} mirror           -- Mirror from which to download system components.
 Commands:
     prepare             -- Install the base jail filesystem and templates to 
-                           ello-jail-dir
+                           bastille-dir
     create-jail         -- Create a new jail
     create-template     -- Create a new template
     add-components      -- Install additional system components into the base
@@ -710,6 +710,7 @@ Commands:
 EOF
     exit 0
 }
+# }}}1
 
 if [ "$#" -lt 1 ]; then
     usage
@@ -721,12 +722,12 @@ for command; do :; done
 
 # Parse global options first
 OPTIND=1
-while getopts $ELLO_JAIL_GLOBAL_OPTS arg; do
+while getopts $BASTILLE_GLOBAL_OPTS arg; do
     case $arg in
-        $ELLO_JAIL_JAIL_PATH_OPT) set_jail_path_to_user_value $OPTARG;;
-        $ELLO_JAIL_ELLO_JAIL_DIR_OPT) set_ello_jail_dir $OPTARG;;
-        $ELLO_JAIL_RELEASE_OPT) set_release $OPTARG ;;
-        $ELLO_JAIL_MIRROR_OPT) set_mirror $OPTARG;;
+        $BASTILLE_JAIL_PATH_OPT) set_jail_path_to_user_value $OPTARG;;
+        $BASTILLE_BASTILLE_DIR_OPT) set_bastille_dir $OPTARG;;
+        $BASTILLE_RELEASE_OPT) set_release $OPTARG ;;
+        $BASTILLE_MIRROR_OPT) set_mirror $OPTARG;;
     esac
 done
 
