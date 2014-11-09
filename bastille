@@ -15,7 +15,6 @@
 
 readonly CONFIG_LOCATION=/usr/local/etc/bastille.conf
 
-
 BASTILLE_USER_CHANGED_JAIL_PATH=""
 
 readonly BASTILLE_OPT_GLOBAL_BASTILLE_DIR='b:'
@@ -120,7 +119,6 @@ set_release() {
 get_release() {
     echo $bastille_freebsd_release
 }
-# }}}1
 
 # load configuration and initialize unset variables {{{1
 [ -r $CONFIG_LOCATION ] && . $CONFIG_LOCATION
@@ -431,6 +429,8 @@ merge_template() {
 create_template() {
     local template_name=''
     local t_root=''
+    local files_to_clone_from_host="etc/resolv.conf etc/localtime"
+    local i=''
 
     cleanup_and_err() {
         [ -d "$t_root" ] && rm -rf $t_root > /dev/null 2>&1
@@ -457,9 +457,13 @@ create_template() {
 
     clone_from_base_rw "etc" $t_root -n || \
         cleanup_and_err "create_template ($LINENO): Could not create etc directory"
-    clone "/" "etc/localtime" "$t_root" || \
-        warn "create_template ($LINENO): Could not copy /etc/localtime to template. \
-            Remember to set the correct timezone manually."
+
+    for i in $files_to_clone_from_host; do
+        clone "/" "$i" "$t_root" || \
+            warn "create_template ($LINENO): Could not copy /$i to template. \
+                Remember to adjust this template accordingly."
+    done
+
     clone_from_base_rw "etc/master.passwd" $t_root && \
         sed -E 's/^(root|toor):[^:]*:/\1:*:/g' $t_root/etc/master.passwd > $t_root/etc/master.passwd || \
         warn "create_template ($LINENO): Could not disable root password based logins."
