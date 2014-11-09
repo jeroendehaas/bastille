@@ -13,14 +13,29 @@ readonly CONFIG_LOCATION=/usr/local/etc/bastille.conf
 
 BASTILLE_USER_CHANGED_JAIL_PATH=""
 
-readonly BASTILLE_BASTILLE_DIR_OPT='b:'
-readonly BASTILLE_JAIL_PATH_OPT='d:'
-readonly BASTILLE_MIRROR_OPT='m:'
-readonly BASTILLE_RELEASE_OPT='r:'
+readonly BASTILLE_OPT_GLOBAL_BASTILLE_DIR='b:'
+readonly BASTILLE_OPT_GLOBAL_JAIL_PATH='d:'
+readonly BASTILLE_OPT_GLOBAL_MIRROR='m:'
+readonly BASTILLE_OPT_GLOBAL_RELEASE='r:'
+readonly BASTILLE_OPT_CREATE_JAIL_NAME='n:'
+readonly BASTILLE_OPT_CREATE_JAIL_HOSTNAME='h:'
+readonly BASTILLE_OPT_CREATE_JAIL_IPV4='4:'
+readonly BASTILLE_OPT_CREATE_JAIL_IPV6='6:'
+readonly BASTILLE_OPT_CREATE_JAIL_TEMPLATE='t:'
+readonly BASTILLE_OPT_CREATE_TEMPLATE_NAME='n:'
 
-readonly BASTILLE_GLOBAL_OPTS="${BASTILLE_BASTILLE_DIR_OPT}\
-${BASTILLE_JAIL_PATH_OPT}${BASTILLE_MIRROR_OPT}${BASTILLE_RELEASE_OPT}"
-
+# all_legal_opts {{{1
+# this script echoes a string for use with the getopts builtin, that
+# specifies which options are legal. Global options are always legal,
+# Additionally all_legal_opts accepts the command given to bastille, 
+# in which case the legal options for that command are also output.
+all_legal_opts() {
+    local command_opts=''
+    local cmd=`echo $1 | tr '-' '_'`
+    local global_opts=`set | grep BASTILLE_OPT_GLOBAL | sed -E 's/.*=(.*)/\1/g' | tr -d '\n'`
+    [ -n "$1" ] &&  command_opts=`set | grep -i BASTILLE_OPT_$cmd | sed -E 's/.*=(.*)/\1/g' | tr -d '\n'`
+    echo "${global_opts}${command_opts}"
+}
 
 # set_bastille_dir {{{1
 # sets the directory in which bastille looks for the base filesystem and
@@ -108,7 +123,7 @@ get_release() {
 
 [ -n "$(get_bastille_dir)" ] ||  set_bastille_dir '/usr/local/bastille'
 [ -n "$(get_jail_path)" ] || set_jail_path "$bastille_dir/jails"
-[ -n "$(get_mirror)" ] || set_mirror 'ftp.nl.freebsd.org'
+[ -n "$(get_mirror)" ] || set_mirror 'ftp.freebsd.org'
 [ -n "$(get_release)" ] || set_release `uname -r`
 
 
@@ -230,7 +245,7 @@ hostname_to_jailname() {
 # returns successfully if its first argument is a directory inside the templates 
 # directory. This directory can be empty.
 is_template() {
-    [ -d "$templates_dir/$1" ]
+    [ -d "$(get_templates_dir)/$1" ]
 }
 
 # is_valid_ipv4_address_list {{{1
@@ -329,7 +344,18 @@ chflag_and_rm() {
 }
 
 # clone {{{1
+# uses tar(1) to duplicate files from one location to another. 
+# clone takes at least three arguments:
+# 1) The directory containing the original files
+# 2) The path to a file or directory relative to the 
+#    source directory to clone. This may be '.' in which
+#    case the source directory is cloned recursively
+# 3) The destination directory to which the files are cloned
+# 
+# Optional extra arguments are passed as arguments to tar(1)
+# when creating the archive
 clone() {
+    [ $# -lt 3 ] && err "clone requires at least 3 arguments"
     local from=$1
     local what=$2
     local to=$3
@@ -337,6 +363,15 @@ clone() {
     tar $@ -f - -C $from -c $what | tar -xf - -p -C $to
 }
 
+# clone_from_base {{{1
+# clones parts of the base filesystem to another directory.
+# clone_from_base takes at least three arguments
+# 1) The base filesystem part (either ro or rw) to clone from
+# 2) The path to a file or directory to clone
+# 3) The destination directory
+#
+# Extra arguments are passed on to the clone function, see its 
+# documentation also
 clone_from_base() {
     [ $# -lt 3 ] && err "clone_from_base requires at least 3 arguments"
     local part=$1
@@ -351,18 +386,29 @@ clone_from_base() {
     clone $from_dir $what $to_dir $@
 }
 
+
+# clone_from_base_rw {{{1
+# clones parts of the writable base filesystem and is implemented
+# by calling clone_from_base with the first argument set to rw,
+# followed by the arguments with which this function was called
 clone_from_base_rw() {
     clone_from_base rw $@
 }
 
+# clone_from_base_ro {{{1
+# clones parts of the read-only base filesystem and is implemented
+# by calling clone_from_base with the first argument set to ro,
+# followed by the arguments with which this function was called
 clone_from_base_ro() {
     clone_from_base ro $@
 }
 
 
-# Merges the contents of a template into a jail
-# $1 should contain the jail name
-# $2 is an optional template name, if omitted 'default' is used
+# merge_template {{{1
+# Merges the contents of a template into a jail.
+# merge_template takes at least one argument, and an optional second one:
+# 1) the jail the template should be merged into
+# 2) an optional template name, defaults to 'default'
 merge_template() {
     [ $# -lt 1 ] && err "merge_template requires at least one argument"
 
@@ -372,14 +418,31 @@ merge_template() {
     clone $(dir_for_template $template_name) . $(dir_for_jail $jail_name)
 }
 
+# create_template {{{1
+# creates a template and populates it with a number of files:
+# * etc/localtime which is copied from the host system
+# * etc/passwd which is cloned from the read-only base filesystem and then
+#   modified to disable password based root logins.
 create_template() {
-    local template_name=$1
-    local t_root=$(dir_for_template $template_name)
+    local template_name=''
+    local t_root=''
 
     cleanup_and_err() {
-        rm -rf $t_root > /dev/null 2>&1
+        [ -d "$t_root" ] && rm -rf $t_root > /dev/null 2>&1
         err $@
     }
+
+    OPTIND=1
+    while getopts `all_legal_opts create_template`  arg; do
+        case $arg in
+            n)
+                template_name=$OPTARG
+                ;;
+        esac
+    done
+
+    [ -n "$template_name" ] || usage "create-template"
+    t_root=$(dir_for_template $template_name)
 
     [ -d "$t_root" ] && \
         cleanup_and_err "create_template ($LINENO): Cannot create template \"${template_name}\", $t_root exists"
@@ -397,7 +460,7 @@ create_template() {
         warn "create_template ($LINENO): Could not disable root password based logins."
 }
 
-
+# create_jail {{{1
 create_jail() {
 
     local jail_name=''
@@ -410,7 +473,7 @@ create_jail() {
 
 
     OPTIND=1
-    while getopts $BASTILLE_GLOBAL_OPTS'n:h:t:4:6:q' arg; do
+    while getopts `all_legal_opts create_jail`  arg; do
         case $arg in
             n)
                 jail_name=$OPTARG
@@ -434,9 +497,9 @@ create_jail() {
     done
 
     # Validate jail name
-    [ -z "$jail_name" ] && usage
-    is_valid_jailname $jailname || \
-        err "$jail_name is not a valid jailname"
+    [ -z "$jail_name" ] && usage "create-jail"
+    #is_valid_jailname $jailname || \
+        #err "$jail_name is not a valid jailname"
 
     # Validate hostname
     [ -z "$jail_hostname" ] && warn 'No hostname given, using jailname' && \
@@ -524,13 +587,20 @@ EOF
     say "Jail '$jail_name' succcessfully created."
 }
 
+# fetch_component {{{1
+# uses fetch(1) to download a system component to a specific directory
+# fetch_component takes two arguments
+#   1) the system component (base, doc, src, ports, lib32, games or kernel)
+#   2) the directory to which to download the system component
+# the files are fetched via ftp from the mirror set by the user
 fetch_component() {
-    local mirror="http://$(get_mirror)/os/FreeBSD/releases/$(uname -m)/$(get_release)"
+    local mirror="ftp://$(get_mirror)/pub/FreeBSD/releases/$(uname -m)/$(get_release)"
     fetch "$mirror/${1}.txz" -o "$2/${1}.txz"
 }
 
-# add_component installs one component provided by its first argument into the base
-# read-only system. 
+# add_component {{{1
+# add_component installs one system component specified by its first argument into the
+# read-only base filesystem. 
 add_component() {
     local component=$1
     local tmp_dir=""
@@ -573,7 +643,8 @@ add_component() {
     echo "Finished adding component '$component'"
 }
 
-# Takes any number of components as its arguments and installs them into the
+# add_components {{{1
+# takes any number of components as its arguments and installs them into the
 # read only base filesystem
 add_components() {
     for component; do
@@ -583,10 +654,12 @@ add_components() {
 
 
 
-# Prepares the system for running jails,
-# $1: directory to which the jail skeleton is installed
-# $2: release of the jail
-# $3: mirror
+# prepare {{{1
+# prepares the system for running jails. It fetches the base system component archive, 
+# splits its contents into a read-only part and a writable part and installs them into
+# the ro and rw base directories respectively. 
+# 
+# It then proceeds by creating a default template for new jails
 prepare() {
     local tmp_dir=""
     local local_dir=''
@@ -646,6 +719,11 @@ EOF
 }
 
 
+# upgrade {{{1
+# upgrade upgrades the base filesystem to a new release level. 
+# It determines the release level of the base filesystem by running the
+# freebsd-version script inside ro/bin and then upgrades from that level
+# to the one specified by the -r option.
 upgrade() {
     local log_file=/var/log/bastille-upgrade
     local target=""
@@ -678,25 +756,33 @@ upgrade() {
 
     if [ $cycles -gt 1 ]; then # We need to update the individual jails as well for changes in configuration files
         # TODO: Update individual jails
+        warn "Do not forget to upgrade the individual jails, to ensure the configuration \
+            files are up to date"
     fi
 
     cleanup
 }
 
+# usage {{{1
+# outputs instructions on how to use bastille to stdout
 usage() {
+    local cmd=${1:-'command'}
     cat <<EOF
-Usage: `basename $0` [options] command
+Usage: `basename $0` [options] $cmd
 
 Global options:
-    -${BASTILLE_BASTILLE_DIR_OPT%:} bastille-dir    -- Directory where to put and look for the jail base filesystem 
+    -${BASTILLE_OPT_GLOBAL_BASTILLE_DIR%:} bastille-dir     -- Directory where to put and look for the jail base filesystem 
                            and templates (default: /usr/local/bastille)
-    -${BASTILLE_JAIL_PATH_OPT%:} jails-dir        -- Directory where to put and look for jails
+    -${BASTILLE_OPT_GLOBAL_JAIL_PATH%:} jails-dir        -- Directory where to put and look for jails
                            (default: /usr/local/bastille/jails)
-    -${BASTILLE_RELEASE_OPT%:} release          -- Release level of which to download the system components (when 
+    -${BASTILLE_OPT_GLOBAL_RELEASE%:} release          -- Release level of which to download the system components (when 
                            used with prepare) or to which to upgrade the jail base filesystem 
                            (when used with upgrade). Defaults to the release level of the host 
                            system
-    -${BASTILLE_MIRROR_OPT%:} mirror           -- Mirror from which to download system components.
+    -${BASTILLE_OPT_GLOBAL_MIRROR%:} mirror           -- Mirror from which to download system components.
+EOF
+[ "$cmd" = 'command' ] && cat <<EOF
+
 Commands:
     prepare             -- Install the base jail filesystem and templates to 
                            bastille-dir
@@ -708,9 +794,24 @@ Commands:
                            using freebsd-update(8)
     usage               -- Display this message
 EOF
-    exit 0
+[ "$cmd" != 'command' ] && cat <<EOF
+
+Command options:
+EOF
+[ "$cmd" = 'create-template' ] && cat<<EOF
+    -n name             -- Name of the template to create (Required)
+EOF
+[ "$cmd" = 'create-jail' ] && cat <<EOF
+    -n name             -- Name of the new jail (Required)
+    -h hostname         -- Hostname of the new jail, defaults to the name of the jail
+    -t template         -- Template on which to base the new jail, defaults to 'default'
+    -4 [x.x.x.x[,...]]  -- A list of IPv4 address with which to associate the new jail
+    -6 [ipv6[,...]]     -- A list of IPv6 address with which to associate the new jail
+EOF
+    exit ${2:-0}
 }
 # }}}1
+
 
 if [ "$#" -lt 1 ]; then
     usage
@@ -722,12 +823,12 @@ for command; do :; done
 
 # Parse global options first
 OPTIND=1
-while getopts $BASTILLE_GLOBAL_OPTS arg; do
+while getopts `all_legal_opts $command` arg; do
     case $arg in
-        "${BASTILLE_JAIL_PATH_OPT%':'}") set_jail_path_to_user_value $OPTARG;;
-        "${BASTILLE_BASTILLE_DIR_OPT%':'}") set_bastille_dir $OPTARG;;
-        "${BASTILLE_RELEASE_OPT%':'}") set_release $OPTARG ;;
-        "${BASTILLE_MIRROR_OPT%':'}") set_mirror $OPTARG;;
+        "${BASTILLE_OPT_GLOBAL_JAIL_PATH%':'}") set_jail_path_to_user_value $OPTARG;;
+        "${BASTILLE_OPT_GLOBAL_BASTILLE_DIR%':'}") set_bastille_dir $OPTARG;;
+        "${BASTILLE_OPT_GLOBAL_RELEASE%':'}") set_release $OPTARG ;;
+        "${BASTILLE_OPT_GLOBAL_MIRROR%':'}") set_mirror $OPTARG;;
     esac
 done
 
