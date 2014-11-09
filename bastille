@@ -23,6 +23,7 @@ readonly BASTILLE_OPT_GLOBAL_MIRROR='m:'
 readonly BASTILLE_OPT_GLOBAL_RELEASE='r:'
 readonly BASTILLE_OPT_CREATE_JAIL_NAME='n:'
 readonly BASTILLE_OPT_CREATE_JAIL_HOSTNAME='h:'
+readonly BASTILLE_OPT_CREATE_JAIL_EXTRA_PARAMETERS='p:'
 readonly BASTILLE_OPT_CREATE_JAIL_IPV4='4:'
 readonly BASTILLE_OPT_CREATE_JAIL_IPV6='6:'
 readonly BASTILLE_OPT_CREATE_JAIL_TEMPLATE='t:'
@@ -133,7 +134,7 @@ get_release() {
 # err {{{1
 # echoes 'Error: ' followed by its arguments to stderr and exits
 err() {
-    echo "Error:" $@ 1>&2
+    echo -e "Error:" $@ 1>&2
     exit 1
 }
 
@@ -478,6 +479,7 @@ create_jail() {
     local jail_ipv4_addr=''
     local jail_ipv6_addr=''
     local jail_components=''
+    local jail_extra_parameters=''
     local quiet="false"
 
 
@@ -498,6 +500,14 @@ create_jail() {
                 ;;
             6)
                 jail_ipv6_addr=$OPTARG
+                ;;
+            p)
+                if echo $OPTARG | grep -vqE '^\w+(=[[:alnum:] ]+)?$'; then
+                    err "Invalid parameter specification '$OPTARG'.\n\
+                        Arguments to -p must be of the form 'parameter[=value]'."
+                fi
+                [ -n "$jail_extra_parameters" ] && jail_extra_parameters="$jail_extra_parameters\\n"
+                jail_extra_parameters="${jail_extra_parameters}$(echo $OPTARG | sed -E 's/=(.*)$/="\1"/g');"
                 ;;
             q)
                 quiet="true"
@@ -535,7 +545,10 @@ About to create a jail:
     template:       $jail_template
     jail_ipv4_addr: $jail_ipv4_addr
     jail_ipv6_addr: $jail_ipv6_addr
+Extra parameters:
+$(echo -e $jail_extra_parameters | sed 's/^/    /g')
 EOF
+    exit 0
 
     local dest_dir=$(dir_for_jail $jail_name)
     local target=""
@@ -591,6 +604,7 @@ $jail_name {
     mount.devfs;
     exec.clean;
     path="$dest_dir";
+$(echo -e $jail_extra_parameters | sed 's/^/    /g')
 }
 EOF
     say "Jail '$jail_name' succcessfully created."
@@ -857,10 +871,10 @@ case $command in
         prepare $@
         ;;
     "create-jail")
-        create_jail $@
+        create_jail "$@"
         ;;
     "create-template")
-        create_template $@
+        create_template "$@"
         ;;
     "add-components")
         add_components $@
