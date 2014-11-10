@@ -896,7 +896,7 @@ EOF
     done
 
     echo "Creating default template... "
-    create_template default
+    create_template -n default
 
     echo "Cleaning up... "
     cleanup
