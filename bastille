@@ -27,6 +27,11 @@ readonly BASTILLE_OPT_CREATE_JAIL_EXTRA_PARAMETERS='p:'
 readonly BASTILLE_OPT_CREATE_JAIL_IPV4='4:'
 readonly BASTILLE_OPT_CREATE_JAIL_IPV6='6:'
 readonly BASTILLE_OPT_CREATE_JAIL_TEMPLATE='t:'
+readonly BASTILLE_OPT_START_JAIL_NAME='n:'
+readonly BASTILLE_OPT_RESTART_JAIL_NAME='n:'
+readonly BASTILLE_OPT_STOP_JAIL_NAME='n:'
+readonly BASTILLE_OPT_SHELL_JAIL_NAME='n:'
+readonly BASTILLE_OPT_SHELL_USER='u:'
 readonly BASTILLE_OPT_CREATE_TEMPLATE_NAME='n:'
 
 # all_legal_opts {{{1
@@ -151,6 +156,47 @@ empty_dir() {
     [ -z "$(ls -A $1)" ]
 }
 
+# definition_for_jail {{{1
+# accepts a jail name as its first argument and echoes the definition 
+# of the corresponding jail from jail.conf. 
+#
+# this function will echo the entire definition as defined in jail.conf(5)
+definition_for_jail() {
+    [ $# = 1 ] || err "definition_for_jail expects one argument"
+    local jail_name=$1
+    awk '/'$jail_name'[ ]*\{/, /.*\}.*/' /etc/jail.conf
+}
+
+# parameter_value_for_jail {{{1
+# accepts a jail name and a parameter name as its first and second argument
+# respectively and echoes to stdout the value of the parameter for that jail,
+# as defined in jail.conf
+parameter_value_for_jail() {
+    [ $# = 2 ] || err "parameter_value_for_jail expects two arguments."
+    local jail_name=$1
+    local parameter=$2
+
+    definition_for_jail $jail_name | grep $parameter | \
+        sed -E 's/(.*)=[[:space:]]*"?([^"]*)"?;/\2/g' 
+}
+
+
+# jail_defined {{{1
+# accepts a jail name as its argument and returns successfully if 
+# the jail with that name is defined
+jail_defined() {
+    [ $# = 1 ] || err "jail_defined expects one argument."
+    definition_for_jail $1 > /dev/null  2>&1
+}
+
+# jail_running {{{1
+# accepts a jail name as its argument and returns successfully if 
+# the jail with that name is running
+jail_running() {
+    [ $# = 1 ] || err "jail_running expects one argument."
+    jls -j $1 > /dev/null 2>&1
+}
+
 # dir_for_jail {{{1
 # takes as its only argument the name of a jail and returns the directory for
 # that jail. If the jail has its path set in jail.conf, that is returned.
@@ -163,9 +209,7 @@ dir_for_jail() {
     # awk outputs only the block belonging to the jail
     # grep filters out the path parameter
     # sed outputs the value between quotes to stdout
-    local dir_to_jail=$(awk '/'$jail_name'[ ]*\{/, /.*\}.*/' /etc/jail.conf | \
-                        grep path | \
-                        sed -E 's/.*"(.*)".*;.*/\1/g')
+    local dir_to_jail=$(parameter_value_for_jail $jail_name path)
 
     # if no match is found, the jail might not have been created
     # in which case we default to a subdirectory with the jail's name
@@ -176,6 +220,9 @@ dir_for_jail() {
 
     echo $dir_to_jail
 }
+
+# has_jail {{{1
+# returns successfull a non-empty directory corresponding
 
 # dir_for_template {{{1
 # echoes to stdout the directory in which to look for or place a template
@@ -548,7 +595,6 @@ About to create a jail:
 Extra parameters:
 $(echo -e $jail_extra_parameters | sed 's/^/    /g')
 EOF
-    exit 0
 
     local dest_dir=$(dir_for_jail $jail_name)
     local target=""
@@ -610,6 +656,68 @@ EOF
     say "Jail '$jail_name' succcessfully created."
 }
 
+# control_jail {{{1
+# starts, stops or restarts the jail referred to using the -n command line option
+control_jail() {
+    local jail_name=''
+    local command=''
+
+    for command; do :; done
+
+    OPTIND=1
+    while getopts $(all_legal_opts "start_jail") arg; do
+        case $arg in 
+            n)
+                jail_name=$OPTARG
+                ;;
+        esac
+    done
+
+    [ -n "$jail_name" ] || err "control_jail ($LINENO): No jail name provided. Did you specify \
+        an argument to the -n option?"
+    
+    local operation='-rc'
+    local message='Restarting'
+    case $command in
+        start)
+            jail_running $jail_name && err "control_jail ($LINENO): $jail_name already running."
+            jail_defined $jail_name || err "control_jail ($LINENO): $jail_name not defined. \
+                Did you forget to create-jail?"
+            operation='-c'
+            message='Starting'
+            ;;
+
+        stop)
+            jail_running $jail_name || err "control_jail ($LINENO): $jail_name not running."
+            operation='-r'
+            message='Stopping'
+            ;;
+        restart)
+            jail_running $jail_name || err "control_jail ($LINENO): $jail_name not running."
+            ;;
+    esac
+
+    echo "$message $jail_name"
+    jail $operation $jail_name
+    echo "Done!"
+}
+
+# start_jail {{{1
+# start the jail with the name specified with the -n option
+start_jail() {
+    control_jail "$@" start
+}
+
+# stop_jail {{{1
+# stop the jail with the name specified with the -n option
+stop_jail() {
+    control_jail "$@" stop
+}
+# restart_jail {{{1
+# restart the jail with the name specified with the -n option
+restart_jail() {
+    control_jail "$@" restart
+}
 # fetch_component {{{1
 # uses fetch(1) to download a system component to a specific directory
 # fetch_component takes two arguments
@@ -835,7 +943,6 @@ EOF
 }
 # }}}1
 
-
 if [ "$#" -lt 1 ]; then
     usage
 fi
@@ -868,26 +975,37 @@ esac
 
 case $command in
     "prepare")
-        prepare $@
+        prepare "$@"
         ;;
     "create-jail")
         create_jail "$@"
+        ;;
+    "start-jail")
+        start_jail "$@"
+        ;;
+    "restart-jail")
+        restart_jail "$@"
+        ;;
+    "stop-jail")
+        stop_jail "$@"
+        ;;
+    "shell")
+        shell "$@"
         ;;
     "create-template")
         create_template "$@"
         ;;
     "add-components")
-        add_components $@
+        add_components "$@"
         ;;
     "upgrade")
-        upgrade
+        upgrade "$@"
         ;;
     "usage")
         usage
         ;;
     *)
-        err "Unknown function \"${command}\""
         usage
         ;;
 esac
-# vim:ts=4:sts=4:et:sw=4:foldmethod=marker:foldlevel=1
+# vim:ts=4:sts=4:et:sw=4:foldmethod=marker:foldlevel=0
