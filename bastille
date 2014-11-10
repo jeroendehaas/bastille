@@ -1015,10 +1015,24 @@ fi
 command=""
 for command; do :; done
 
+case "$command" in
+    prepare|usage) ;;
+    create-jail|start-jail|stop-jail|restart-jail|shell|create-template|add-components|upgrade)
+        if is_not_prepared; then
+            err "Could not find the base filesystem for jails. Did you run '`basename $0` prepare'?"
+        fi
+        ;;
+    *)
+        warn "Unknown command: $command"
+        command='usage'
+esac
+
+
 # Parse global options first
 OPTIND=1
 while getopts `all_legal_opts $command` arg; do
     case $arg in
+        "?") usage $command 1;;
         "${BASTILLE_OPT_GLOBAL_JAIL_PATH%':'}") set_jail_path_to_user_value $OPTARG;;
         "${BASTILLE_OPT_GLOBAL_BASTILLE_DIR%':'}") set_bastille_dir $OPTARG;;
         "${BASTILLE_OPT_GLOBAL_RELEASE%':'}") set_release $OPTARG ;;
@@ -1028,15 +1042,6 @@ while getopts `all_legal_opts $command` arg; do
 done
 
 
-
-case "$command" in
-    prepare|usage) ;;
-    *)
-        if is_not_prepared; then
-            err "Could not find the base filesystem for jails. Did you run '`basename $0` prepare'?"
-        fi
-        ;;
-esac
 
 case $command in
     "prepare")
