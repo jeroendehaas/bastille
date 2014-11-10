@@ -127,6 +127,15 @@ get_release() {
     echo $bastille_freebsd_release
 }
 
+# get_host_release {{{1
+# echoes the version number of the FreeBSD instance that is running on the host. 
+# this excludes patch levels
+get_host_release() {
+    local unamer=`uname -r`
+    echo ${unamer%-p*}
+}
+
+
 # set_jail_conf {{{1
 # accepts as an argument the path to the configuration file in which to store
 # and look for jail definitions
@@ -146,7 +155,7 @@ get_jail_conf() {
 [ -n "$(get_bastille_dir)" ] ||  set_bastille_dir '/usr/local/bastille'
 [ -n "$(get_jail_path)" ] || set_jail_path "$bastille_dir/jails"
 [ -n "$(get_mirror)" ] || set_mirror 'ftp.freebsd.org'
-[ -n "$(get_release)" ] || set_release `uname -r`
+[ -n "$(get_release)" ] || set_release $(get_host_release)
 [ -n "$(get_jail_conf)" ] || set_jail_conf '/etc/jail.conf'
 
 
