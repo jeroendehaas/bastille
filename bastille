@@ -340,24 +340,24 @@ is_valid_ipv6_address_list() {
 # READ_ONLY_DIRS {{{1 
 # A space-separated list of directories that belong to the read only part of the
 # base jail
-readonly READ_ONLY_DIRS="./COPYRIGHT \
-                         ./bin/* \
-                         ./boot/* \
-                         ./lib/* \
-                         ./libexec/* \
-                         ./rescue/* \
-                         ./sbin/* \
-                         ./sys/* \
-                         ./usr/bin/* \
-                         ./usr/games/* \
-                         ./usr/include/* \
-                         ./usr/lib/* \
-                         ./usr/lib32/* \
-                         ./usr/libdata/* \
-                         ./usr/libexec/* \
-                         ./usr/sbin/* \
-                         ./usr/share/* \
-                         ./usr/src/*"
+readonly READ_ONLY_DIRS="'./COPYRIGHT' \
+                         './bin/*' \
+                         './boot/*' \
+                         './lib/*' \
+                         './libexec/*' \
+                         './rescue/*' \
+                         './sbin/*' \
+                         './sys/*' \
+                         './usr/bin/*' \
+                         './usr/games/*' \
+                         './usr/include/*' \
+                         './usr/lib/*' \
+                         './usr/lib32/*' \
+                         './usr/libdata/*' \
+                         './usr/libexec/*' \
+                         './usr/sbin/*' \
+                         './usr/share/*' \
+                         './usr/src/*'"
 
 # has_base_part {{{1
 # returns successfully if its first argument is a non-empty directory in the 
@@ -399,10 +399,12 @@ extract_base() {
             err "extract (${LINENO}): third argument must be 'ro' or 'rw'";;
     esac
 
-    inclusion_pattern=`echo $READ_ONLY_DIRS | awk '{
-        for (i = 1; i <= NF; i++)
-            printf "--'$option'=%s ", $i }'`
-
+    inclusion_pattern=$(for i in $READ_ONLY_DIRS; do 
+        pattern=$i
+        pattern=${pattern#"'"}
+        pattern=${pattern%"'"}
+        echo -n "--${option}=$pattern "
+    done)
     tar -xpf $archive $inclusion_pattern -C $(dir_for_base_part $part)
 }
 
@@ -997,7 +999,6 @@ EOF
     exit ${2:-0}
 }
 # }}}1
-
 if [ "$#" -lt 1 ]; then
     usage
 fi
