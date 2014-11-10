@@ -537,9 +537,15 @@ create_template() {
                 Remember to adjust this template accordingly."
     done
 
-    clone_from_base_rw "etc/master.passwd" $t_root && \
-        sed -E 's/^(root|toor):[^:]*:/\1:*:/g' $t_root/etc/master.passwd > $t_root/etc/master.passwd || \
-        warn "create_template ($LINENO): Could not disable root password based logins."
+    clone_from_base_rw "etc/master.passwd" $t_root ||
+        cleanup_and_err "create_template ($LINENO): Could not create master.passwd in template"
+    # Originally only had  the following line here:
+    # sed -E 's/^(root|toor):[^:]*:/\1:*:/g' $t_root/etc/master.passwd  > $t_root/etc/master.passwd
+    # but that caused master.passwd to be truncated
+    sed -E 's/^(root|toor):[^:]*:/\1:*:/g' $t_root/etc/master.passwd  > $t_root/etc/master.passwd2 || \
+        cleanup_and_err "create_template ($LINENO): Could not disable root based password logins for template"
+    mv $t_root/etc/master.passwd2 $t_root/etc/master.passwd || \
+        cleanup_and_err "create_template ($LINENO): Could not disable root based password logins for template"
 }
 
 # create_jail {{{1
@@ -648,9 +654,11 @@ EOF
             directory."
     
     for ro_dir in $READ_ONLY_DIRS; do
-        target=${ro_dir#./}
+        target=$(echo $ro_dir | sed -E $'s/^\'\\.\\/(.*)\'$/\\1/g')
         target=${target%'/*'}
-        ln -s /ro/$target $dest_dir/$target
+        echo "Linking $target"
+        ln -s /ro/$target $dest_dir/$target ||
+            cleanup_and_err "Could not create link $target in jail's filesystem"
     done
 
     say "Initializing writable filesystem..."
