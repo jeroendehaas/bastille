@@ -33,6 +33,7 @@ readonly BASTILLE_OPT_STOP_JAIL_NAME='n:'
 readonly BASTILLE_OPT_SHELL_JAIL_NAME='n:'
 readonly BASTILLE_OPT_SHELL_USER='u:'
 readonly BASTILLE_OPT_CREATE_TEMPLATE_NAME='n:'
+readonly BASTILLE_OPT_ADD_COMPONENTS_COMPONENT='a:'
 
 # all_legal_opts {{{1
 # this script echoes a string for use with the getopts builtin, that
@@ -52,7 +53,6 @@ all_legal_opts() {
 # templates to the first argument
 set_bastille_dir() {
     bastille_dir=$1
-    set_jail_path "$bastille_dir/jails"
 }
 
 # get_bastille_dir {{{1
@@ -824,11 +824,16 @@ add_component() {
 }
 
 # add_components {{{1
-# takes any number of components as its arguments and installs them into the
-# read only base filesystem
+# takes any number of components specified with -a options and installs them 
+# into the read only base filesystem
 add_components() {
-    for component; do
-        add_component $component
+    OPTIND=1
+    while getopts `all_legal_opts add_components` arg; do
+        case $arg in
+            "a")
+                add_component $OPTARG
+                ;;
+        esac
     done
 }
 
@@ -1011,10 +1016,18 @@ EOF
 EOF
 [ "$cmd" = 'create-jail' ] && cat <<EOF
     -n name             -- Name of the new jail (Required)
-    -h hostname         -- Hostname of the new jail, defaults to the name of the jail
-    -t template         -- Template on which to base the new jail, defaults to 'default'
-    -4 [x.x.x.x[,...]]  -- A list of IPv4 address with which to associate the new jail
-    -6 [ipv6[,...]]     -- A list of IPv6 address with which to associate the new jail
+    -h hostname         -- Hostname of the new jail, defaults to the name of 
+                           the jail
+    -t template         -- Template on which to base the new jail, defaults to 
+                           'default'
+    -4 [x.x.x.x[,...]]  -- A list of IPv4 address with which to associate the 
+                           new jail
+    -6 [ipv6[,...]]     -- A list of IPv6 address with which to associate the 
+                           new jail
+EOF
+[ "$cmd" = 'add-components' ] && cat <<EOF
+    -a component        -- Adds component. This option may be repeated several
+                           times.
 EOF
     exit ${2:-0}
 }
