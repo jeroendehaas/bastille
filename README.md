@@ -2,8 +2,6 @@
 Bastille is a small utility designed to simplify creating and updating of jails 
 on modern versions of the FreeBSD operating system. 
 
-<img src="http://upload.wikimedia.org/wikipedia/commons/c/c4/Bastille%2C_1790_retouched.jpg">
-
 Bastille lets jails share a common base of binaries, libraries and other files.
 Individual jails do not need to modify these resources. Therefore it suffices
 to install them only once. Bastille greatly simplifies sharing resources by
