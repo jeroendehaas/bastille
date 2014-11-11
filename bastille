@@ -975,15 +975,17 @@ usage() {
 Usage: `basename $0` [options] $cmd
 
 Global options:
-    -${BASTILLE_OPT_GLOBAL_BASTILLE_DIR%:} bastille-dir     -- Directory where to put and look for the jail base filesystem 
-                           and templates (default: /usr/local/bastille)
+    -${BASTILLE_OPT_GLOBAL_BASTILLE_DIR%:} bastille-dir     -- Directory where to put and look for the jail base 
+                           filesystem and templates
+                           (default: /usr/local/bastille)
     -${BASTILLE_OPT_GLOBAL_CONFIG_FILE%:} config-file      -- Store and look for jail definitions in config-file 
                            (default: /etc/jail.conf
-    -${BASTILLE_OPT_GLOBAL_RELEASE%:} release          -- Release level of which to download the system components (when 
-                           used with prepare) or to which to upgrade the jail base filesystem 
-                           (when used with upgrade). Defaults to the release level of the host 
-                           system
     -${BASTILLE_OPT_GLOBAL_MIRROR%:} mirror           -- Mirror from which to download system components.
+    -${BASTILLE_OPT_GLOBAL_RELEASE%:} release          -- Release level of which to download the system 
+                           components (when used with prepare) or to which to 
+                           upgrade the jail base filesystem (when used with 
+                           upgrade). Defaults to the release level of the host 
+                           system
 EOF
 [ "$cmd" = 'command' ] && cat <<EOF
 
