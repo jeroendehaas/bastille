@@ -87,6 +87,12 @@ get_jail_path() {
     echo $jail_path
 }
 
+# all_jails_in_jail_path {{{1
+# echoes a space separated list of all the jails under $(get_jail_path)
+all_jails_in_jail_path() {
+    echo $(get_jail_path)/*
+}
+
 
 # get_base_dir {{{1
 # echoes the directory in which to look for the base filesystems to stdout
@@ -912,16 +918,21 @@ EOF
 }
 
 
-# upgrade {{{1
-# upgrade upgrades the base filesystem to a new release level. 
-# It determines the release level of the base filesystem by running the
-# freebsd-version script inside ro/bin and then upgrades from that level
-# to the one specified by the -r option.
-upgrade() {
-    local log_file=/var/log/bastille-upgrade
+# jail_freebsd_update {{{1
+jail_freebsd_update() {
+    [ "$#" = 1 ] || err "jail_freebsd_update expects one argument"
+
+
+    local initial_command=$1;
+    local echo_command=$1; [ "$initial_command" = "fetch" ] && echo_command="update"
+    local log_file="/var/log/bastille-$echo_command"
     local target=""
     local cycles=0
+    local target_i=0
     local jail_base_release=$(get_jail_base_release)
+    # only pass an -r argument to freebsd-update if initial_command is upgrade
+    local to_release=''; [ "$initial_command" = "upgrade" ] && to_release="-r $(get_release)"
+
 
     cleanup() {
     }
@@ -931,16 +942,16 @@ upgrade() {
     }
 
     : > $log_file
-    echo -n 'Updating base'
-    for i in ro rw; do
-        target=$(dir_for_base_part $i)
-        echo $target
+    for target in $(dir_for_base_part ro) $(dir_for_base_part rw) $(all_jails_in_jail_path); do
+        echo ''
+        echo -n "${echo_command%'e'}ing $(basename $target)"
+        [ -d "$target" ] || continue;
         echo -n '.'
-        echo 'y' | UNAME_r="$jail_base_release"  PAGER=cat freebsd-update upgrade -b $target -r $(get_release) > $log_file 2>&1 
-            if [ "$?" -gt 0 ]; then
-                cat $log_file 1>&2
-                cleanup_and_err "upgrade ($LINENO): Error while fetching upgrade"
-            fi
+        UNAME_r="$jail_base_release" PAGER=cat freebsd-update $initial_command -b $target $to_release > $log_file 2>&1 
+        if [ "$?" -gt 0 ]; then
+            cat $log_file 1>&2
+            cleanup_and_err "jail_freebsd_update ($LINENO): Error while fetching ${echo_command}"
+        fi
 
         cycles=0
         while [ $? -eq 0 ]; do
@@ -953,11 +964,26 @@ upgrade() {
 
     if [ $cycles -gt 1 ]; then # We need to update the individual jails as well for changes in configuration files
         # TODO: Update individual jails
-        warn "Do not forget to upgrade the individual jails, to ensure the configuration \
+        warn "Do not forget to $echo_command the individual jails, to ensure the configuration \
             files are up to date"
     fi
 
     cleanup
+}
+
+
+# upgrade {{{1
+# upgrade upgrades the base filesystem to a new release level. 
+# It determines the release level of the base filesystem by running the
+# freebsd-version script inside ro/bin and then upgrades from that level
+# to the one specified by the -r option.
+upgrade() {
+    jail_freebsd_update upgrade
+}
+
+# update {{{1
+update() {
+    jail_freebsd_update fetch
 }
 
 # usage {{{1
@@ -990,6 +1016,7 @@ Commands:
     prepare             -- Install the base jail filesystem and templates to 
                            bastille-dir
     shell               -- Starts a shell inside the jail
+    update              -- Update the base jail to the latest patch level
     upgrade             -- Upgrade the base jail filesystem to a newer release,
                            using freebsd-update(8)
     usage               -- Display this message
@@ -1011,6 +1038,7 @@ EOF
     exit ${2:-0}
 }
 # }}}1
+
 if [ "$#" -lt 1 ]; then
     usage
 fi
@@ -1021,7 +1049,7 @@ for command; do :; done
 
 case "$command" in
     prepare|usage) ;;
-    create-jail|start-jail|stop-jail|restart-jail|shell|create-template|add-components|upgrade)
+    create-jail|start-jail|stop-jail|restart-jail|shell|create-template|add-components|upgrade|update)
         if is_not_prepared; then
             err "Could not find the base filesystem for jails. Did you run '`basename $0` prepare'?"
         fi
@@ -1074,6 +1102,9 @@ case $command in
         ;;
     "upgrade")
         upgrade "$@"
+        ;;
+    "update")
+        update "$@"
         ;;
     "usage")
         usage
