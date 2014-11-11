@@ -18,7 +18,6 @@ readonly CONFIG_LOCATION=/usr/local/etc/bastille.conf
 BASTILLE_USER_CHANGED_JAIL_PATH=""
 
 readonly BASTILLE_OPT_GLOBAL_BASTILLE_DIR='b:'
-readonly BASTILLE_OPT_GLOBAL_JAIL_PATH='d:'
 readonly BASTILLE_OPT_GLOBAL_MIRROR='m:'
 readonly BASTILLE_OPT_GLOBAL_RELEASE='r:'
 readonly BASTILLE_OPT_GLOBAL_CONFIG_FILE="c:"
@@ -62,29 +61,12 @@ get_bastille_dir() {
     echo $bastille_dir
 }
 
-# set_jail_path {{{1
-# changes the directory in which bastille looks for jails to the first
-# argument, unless the function set_jail_path_to_user_value was called
-# previously, in which case this function will do nothing.
-set_jail_path() {
-    [ -z "$BASTILLE_USER_CHANGED_JAIL_PATH" ] && \
-        jail_path=$1
-}
 
-# set_jail_path_to_user_value {{{1
-# calls set_jail_path passing on the first argument. This function should be
-# used when a user explicitly sets a jail path. Once this function is called,
-# future calls to set_bastille_dir will not change the jail_path
-set_jail_path_to_user_value() {
-    BASTILLE_USER_CHANGED_JAIL_PATH=''
-    set_jail_path $1
-    BASTILLE_USER_CHANGED_JAIL_PATH="true"
-}
 
 # get_jail_path {{{1
 # echoes the jail path to stdout
 get_jail_path() {
-    echo $jail_path
+    echo "$(get_bastille_dir)/jails"
 }
 
 # all_jails_in_jail_path {{{1
@@ -159,7 +141,6 @@ get_jail_conf() {
 
 
 [ -n "$(get_bastille_dir)" ] ||  set_bastille_dir '/usr/local/bastille'
-[ -n "$(get_jail_path)" ] || set_jail_path "$bastille_dir/jails"
 [ -n "$(get_mirror)" ] || set_mirror 'ftp.freebsd.org'
 [ -n "$(get_release)" ] || set_release $(get_host_release)
 [ -n "$(get_jail_conf)" ] || set_jail_conf '/etc/jail.conf'
@@ -996,8 +977,6 @@ Usage: `basename $0` [options] $cmd
 Global options:
     -${BASTILLE_OPT_GLOBAL_BASTILLE_DIR%:} bastille-dir     -- Directory where to put and look for the jail base filesystem 
                            and templates (default: /usr/local/bastille)
-    -${BASTILLE_OPT_GLOBAL_JAIL_PATH%:} jails-dir        -- Directory where to put and look for jails
-                           (default: /usr/local/bastille/jails)
     -${BASTILLE_OPT_GLOBAL_CONFIG_FILE%:} config-file      -- Store and look for jail definitions in config-file 
                            (default: /etc/jail.conf
     -${BASTILLE_OPT_GLOBAL_RELEASE%:} release          -- Release level of which to download the system components (when 
@@ -1065,7 +1044,6 @@ OPTIND=1
 while getopts `all_legal_opts $command` arg; do
     case $arg in
         "?") usage $command 1;;
-        "${BASTILLE_OPT_GLOBAL_JAIL_PATH%':'}") set_jail_path_to_user_value $OPTARG;;
         "${BASTILLE_OPT_GLOBAL_BASTILLE_DIR%':'}") set_bastille_dir $OPTARG;;
         "${BASTILLE_OPT_GLOBAL_RELEASE%':'}") set_release $OPTARG ;;
         "${BASTILLE_OPT_GLOBAL_MIRROR%':'}") set_mirror $OPTARG;;
