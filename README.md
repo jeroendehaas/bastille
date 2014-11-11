@@ -1,23 +1,23 @@
 # Bastille
-Bastille is a small utility designed to simplify creating and updating of jails 
-on modern versions of the FreeBSD operating system. 
+Bastille is a small utility designed to simplify creating and updating jails on 
+modern versions of the FreeBSD operating system. 
 
 Bastille lets jails share a common base of binaries, libraries and other files.
-Individual jails do not need to modify these resources. Therefore it suffices
+Individual jails do not need to modify these resources, hence it suffices
 to install them only once. Bastille greatly simplifies sharing resources by
-creating a base jail, which contains the system components required for running
-fully functional jails.  The base jail consists of a common read-only part and
+creating base file systems, which contain the necessary system components for 
+running jails.  The base file systems consists of a common read-only part and
 a writable part of which every jail will receive a unique copy.  Additionally,
 Bastille supports templates. A template's content can be merged into a new jail
 thus overriding or adding configuration files.
 
 Bastille was inspired by [ezjail](http://erdgeist.org/arts/software/ezjail/),
-but the scope of Bastille is much more restricted. Bastille only supports
-official binary releases and Bastille does not provide its own service, relying
-instead on FreeBSD's builtin jail service to start and stop jails at boot time.
-It does not manage encrypted jails, or ZFS-datasets. By default Bastille stores
-jail definitions in jail.conf(8) (a file other than /etc/jail.conf may be
-used), which is now the recommended way to define jails. 
+but the scope of Bastille is much more restricted. Bastille does not provide its 
+own service, relying instead on FreeBSD's builtin jail service to start and stop 
+jails at boot time. Bastille only works with official binary of FreeBSD. It does 
+not manage encrypted jails, or ZFS-datasets.  By default Bastille stores jail 
+definitions in jail.conf(8) (a file other than /etc/jail.conf may be used), 
+which is now the recommended way to define jails. 
 
 # Base filesystems, templates and jails
 The concept of base file systems, templates and jails are central to 
@@ -41,10 +41,10 @@ templates/                  | Directory under which to store templates
 templates/default           | Directory for default template
 ```
 
-Bastille can be made to use a different path for its files. This is useful if 
-you wish to simultaneously maintain jails running under different versions of 
-FreeBSD. In such a scenario, you would typically prepare a directory structure 
-for each release version.
+Bastille can be made to use a different path for its files. This is useful if, 
+for example, you wish to simultaneously maintain base file systems for different 
+versions of FreeBSD.  In such a scenario, you would typically prepare 
+a directory structure for each release.
 
 ## Base file systems
 There are two base file system parts: a read-only ("ro") part and a writable one 
@@ -90,6 +90,7 @@ Every jail is based on a template. If none was explicitly specified, the
 part.
 
 # Commands
+
 ## Synopsis
 ```
     bastille [-b bastille-dir] [-c config-file] [-m mirror]
