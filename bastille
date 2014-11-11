@@ -935,8 +935,12 @@ upgrade() {
         target=$(dir_for_base_part $i)
         echo $target
         echo -n '.'
-        echo 'y' | UNAME_r=$(get_jail_base_release) get_base_PAGER=cat freebsd-update upgrade -b $target -r $(get_release) > $log_file 2>&1 || \
-            cleanup_and_err "upgrade ($LINENO): Error while fetching upgrade"
+        echo 'y' | UNAME_r=$(get_jail_base_release) get_base_PAGER=cat freebsd-update upgrade -b $target -r $(get_release) > $log_file 2>&1 
+            if [ "$?" -gt 0 ]; then
+                echo ''
+                cat $log_file 1>&2
+                cleanup_and_err "upgrade ($LINENO): Error while fetching upgrade"
+            fi
 
         cycles=0
         while [ $? -eq 0 ]; do
