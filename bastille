@@ -1058,7 +1058,7 @@ for potential_command; do
         [ -z "$parsing_option" ] && [ -z "$command" ] && command=$potential_command
         parsing_option=''
     else # $potential_command starts with dash
-        if echo $all_options | grep "${potential_command#-}:"; then
+        if echo $all_options | grep -q "${potential_command#-}:"; then
             parsing_option="$potential_command"
         else
             parsing_option=''
