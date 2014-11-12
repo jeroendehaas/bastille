@@ -19,6 +19,9 @@ not manage encrypted jails, or ZFS-datasets.  By default Bastille stores jail
 definitions in jail.conf(8) (a file other than /etc/jail.conf may be used), 
 which is now the recommended way to define jails. 
 
+# Requirements
+Bastille requires FreeBSD 9.3 or later.
+
 # Base filesystems, templates and jails
 The concept of base file systems, templates and jails are central to 
 understanding Bastille. 
