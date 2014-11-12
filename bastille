@@ -922,10 +922,10 @@ jail_freebsd_update() {
     local log_file="/var/log/bastille-$echo_command"
     local target=""
     local cycles=0
-    local target_i=0
     local jail_base_release=$(get_jail_base_release)
     # only pass an -r argument to freebsd-update if initial_command is upgrade
     local to_release=''; [ "$initial_command" = "upgrade" ] && to_release="-r $(get_release)"
+    local bdir=$(get_bastille_dir)
 
 
     cleanup() {
@@ -937,8 +937,8 @@ jail_freebsd_update() {
 
     : > $log_file
     for target in $(dir_for_base_part ro) $(dir_for_base_part rw) $(all_jails_in_jail_path); do
-        echo ''
-        echo -n "${echo_command%'e'}ing $(basename $target)"
+        local display_target=${target#$bdir/}
+        echo -n "${echo_command%'e'}ing ${display_target}"
         [ -d "$target" ] || continue;
         echo -n '.'
         UNAME_r="$jail_base_release" PAGER=cat freebsd-update $initial_command -b $target $to_release > $log_file 2>&1 
@@ -953,14 +953,9 @@ jail_freebsd_update() {
             echo -n '.'
             PAGER=cat freebsd-update install -b $target > $log_file 2>&1
         done
+        echo ''
     done
-    echo ' done'
-
-    if [ $cycles -gt 1 ]; then # We need to update the individual jails as well for changes in configuration files
-        # TODO: Update individual jails
-        warn "Do not forget to $echo_command the individual jails, to ensure the configuration \
-            files are up to date"
-    fi
+    echo 'Done'
 
     cleanup
 }
