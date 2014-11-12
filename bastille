@@ -589,6 +589,7 @@ create_jail() {
 
     # Validate jail name
     [ -z "$jail_name" ] && usage "create-jail"
+    [ -n "$(definition_for_jail $jail_name)" ] && err "A jail named '$jail_name' is already defined."
     #is_valid_jailname $jailname || \
         #err "$jail_name is not a valid jailname"
 
