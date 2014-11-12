@@ -181,7 +181,7 @@ empty_dir() {
 definition_for_jail() {
     [ $# = 1 ] || err "definition_for_jail expects one argument"
     local jail_name=$1
-    awk '/'$jail_name'[ ]*\{/, /.*\}.*/' $(get_jail_conf)
+    awk '/'$jail_name'[ ]*\{/, /.*\}.*/' $(get_jail_conf) 2>/dev/null
 }
 
 # parameter_value_for_jail {{{1
