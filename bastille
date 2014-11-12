@@ -1065,7 +1065,7 @@ for potential_command; do
         fi
     fi
 
-    # Current command line argument is the actual command
+    # $potential_command is not the actual command, keep it on the command line
     if [ ! "$potential_command" = "$command" ]; then
         [ -n "$cmd_line" ] && cmd_line="${cmd_line} "
         cmd_line="${cmd_line}${potential_command}"
