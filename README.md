@@ -19,10 +19,10 @@ not manage encrypted jails, or ZFS-datasets.  By default Bastille stores jail
 definitions in jail.conf(8) (a file other than /etc/jail.conf may be used), 
 which is now the recommended way to define jails. 
 
-# Requirements
+## Requirements
 Bastille requires FreeBSD 9.3 or later.
 
-# Base filesystems, templates and jails
+## Base filesystems, templates and jails
 The concept of base file systems, templates and jails are central to 
 understanding Bastille. 
 
@@ -49,7 +49,7 @@ for example, you wish to simultaneously maintain base file systems for different
 versions of FreeBSD.  In such a scenario, you would typically prepare 
 a directory structure for each release.
 
-## Base file systems
+### Base file systems
 There are two base file system parts: a read-only ("ro") part and a writable one 
 ("rw").  The read-only part is populated with static files that typically do not 
 change between FreeBSD releases (or patch levels), whereas the writable part 
@@ -61,7 +61,7 @@ among all jails, thus saving disk space. Additionally, when patching or
 upgrading, the read-only part needs to be updated once rather than for each
 jail individually.
 
-## Templates
+### Templates
 A template is a set of files that are copied over a new jail's file system. That 
 is, after a jail has obtained its own copy of the writable base part, the files 
 from the template are copied into the new jail's filesystem, overriding any 
@@ -74,7 +74,7 @@ By default, templates contain a master.passwd file that disables password-based
 root logins as well as a copy of the host's `/etc/localtime` and 
 `/etc/resolv.conf`' file.
 
-# Jails
+## Jails
 A jail is identified by its name and typically resides under 
 `/usr/local/bastille/jails/` in a folder sharing its name. Every jail has 
 a directory named `ro` directly below its root onto which the read-only base 
@@ -92,11 +92,11 @@ Every jail is based on a template. If none was explicitly specified, the
 `default` template is used. Files in a template supersede those in the base rw 
 part.
 
-# Usage
+## Usage
 Bastille provides the `bastille` script which expects at least a command, which 
 may appear anywhere on the command line, and some additional options. 
 
-## Synopsis
+### Synopsis
 ```
     bastille [-b bastille-dir] [-c config-file] [-m mirror]
         [-r release] prepare
@@ -110,7 +110,7 @@ may appear anywhere on the command line, and some additional options.
     bastille version
 ```
 
-## Global options
+### Global options
 ```
 Global options:
     -b bastille-dir     -- Directory where to put and look for the jail base 
@@ -126,41 +126,41 @@ Global options:
                            system
 ```
 
-## prepare
+### prepare
 Prepares Bastille for use. First, this command creates the directory structure 
 described for the base parts and templates under `<bastille-dir>`.  Secondly, it 
 downloads the base system component, splits its contents into a read-only and 
 writable base file system part and installs the corresponding files in the 
 correct base directory. Finally, a default template is created
 
-## add-components
+### add-components
 Adds system components to the read-only base parts. This must be a valid system 
 component such as src, ports.
 
-### Command options
+#### Command options
 ```
 Command options:
     -a component        -- Adds component. This option may be repeated several
                            times.
 ```
 
-## create-template
+### create-template
 Creates a new template. A new template will be created under 
 `<bastille-dir>/templates`. By default a template contains an 
 `etc/master.passwd` file which disables password-based logins for root plus 
 a copy of the host's `/etc/localtime` and `/etc/resolv.conf` file.
 
-### Command options
+#### Command options
 ```
 Command options:
     -n name             -- Name of the template to create (Required)
 ```
 
-## create-jail
+### create-jail
 Creates a new jail in a directory sharing the jail's name under 
 `<bastille-dir>/jails`.
 
-### Command options
+#### Command options
 ```
 Command options:
     -n name             -- Name of the new jail (Required)
@@ -174,14 +174,14 @@ Command options:
                            new jail
 ```
 
-## update
+### update
 Updates the base file systems and jails to the latest patch level. 
 
 This command will update the base file system and all jails in 
 `<bastille-dir>/jails`. This is done, because once the base file systems are 
 updated, its impossible to figure out from which version they were updated.
 
-## upgrade
+### upgrade
 Upgrades the base file systems and jails to the release specified with the `-r` 
 option or, if the `-r` option was omitted, to the host's release.
 
@@ -189,5 +189,5 @@ This command will upgrade the base file system and all jails in
 `<bastille-dir>/jails`. This is done, because once the base file systems are 
 updated, its impossible to figure out from which version they were upgraded..
 
-## version
+### version
 Displays Bastille's version number
