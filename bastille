@@ -38,7 +38,7 @@ readonly BASTILLE_OPT_ADD_COMPONENTS_COMPONENT='a:'
 # all_legal_opts {{{1
 # this script echoes a string for use with the getopts builtin, that
 # specifies which options are legal. Global options are always legal,
-# Additionally all_legal_opts accepts the command given to bastille, 
+# Additionally all_legal_opts accepts as its first argument a command
 # in which case the legal options for that command are also output.
 all_legal_opts() {
     local command_opts=''
@@ -46,6 +46,13 @@ all_legal_opts() {
     local global_opts=`set | grep BASTILLE_OPT_GLOBAL | sed -E 's/.*=(.*)/\1/g' | tr -d '\n'`
     [ -n "$1" ] &&  command_opts=`set | grep -i BASTILLE_OPT_$cmd | sed -E 's/.*=(.*)/\1/g' | tr -d '\n'`
     echo "${global_opts}${command_opts}"
+}
+
+# all_known_opts {{{1
+# echoes all the known options. If an option is used in conjunction
+# with several commands, it will be reported only once
+all_known_opts() {
+    set | grep 'BASTILLE_OPT_' | sed -E 's/.*=(.*)/\1/g' | sort | uniq | tr -d '\n'
 }
 
 # set_bastille_dir {{{1
@@ -1037,9 +1044,35 @@ if [ "$#" -lt 1 ]; then
     usage
 fi
 
-# The command should be the last argument given to this script
+# determine which command is to be executed {{{1
+# Here, the command is determined by iterating over all positional arguments.
+# The first positional argument that does not start with a dash and was not 
+# preceded by an option that expects a value, is treated as the command. 
+# The positional arguments are rebuilt, but the command is excluded.
 command=""
-for command; do :; done
+parsing_option=''
+all_options=`all_known_opts`
+cmd_line=''
+for potential_command; do 
+    if [ "${potential_command#-}" = "$potential_command" ]; then # $potential_command does not start with a dash
+        [ -z "$parsing_option" ] && [ -z "$command" ] && command=$potential_command
+        parsing_option=''
+    else # $potential_command starts with dash
+        if echo $all_options | grep "${potential_command#-}:"; then
+            parsing_option="$potential_command"
+        else
+            parsing_option=''
+        fi
+    fi
+
+    # Current command line argument is the actual command
+    if [ ! "$potential_command" = "$command" ]; then
+        [ -n "$cmd_line" ] && cmd_line="${cmd_line} "
+        cmd_line="${cmd_line}${potential_command}"
+    fi
+done 
+eval "set -- $cmd_line"
+#}}}1
 
 case "$command" in
     prepare|usage) ;;
