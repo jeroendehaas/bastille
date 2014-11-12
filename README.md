@@ -104,7 +104,8 @@ may appear anywhere on the command line, and some additional options.
         [-r release] add-components
     bastille -n name [-b bastille-dir] create-template
     bastille -n name [-b bastille-dir] [-4 ip4.addr]
-        [-6 ip6.addr] [-h hostname] [-t template] create-jail
+        [-6 ip6.addr] [-h hostname] [-p parameter=value]
+        [-t template] create-jail
     bastille [-b bastille-dir] update
     bastille [-b bastille-dir] [-r release] upgrade
     bastille version
@@ -172,6 +173,8 @@ Command options:
                            new jail
     -6 [ipv6[,...]]     -- A list of IPv6 addresses with which to associate the 
                            new jail
+    -p parameter=value  -- Sets parameter to value for the new jail. This
+                           option may appear several times.
 ```
 
 ### update
