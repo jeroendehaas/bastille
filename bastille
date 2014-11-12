@@ -816,7 +816,7 @@ add_component() {
             ;;
     esac
 
-    tmp_dir=$(mktemp -d)
+    tmp_dir=$(mktemp -d -t bastille)
     [ $? -gt 0 ] && err "add_component ($LINENO): could not create temporary directory"
     
     fetch_component $component $tmp_dir || \
@@ -888,7 +888,7 @@ EOF
     done
 
     echo "Downloading distribution archives... "
-    tmp_dir=$(mktemp -d)
+    tmp_dir=$(mktemp -d -t bastille)
     for file in $files; do
         fetch_component 'base' $tmp_dir || \
             cleanup_and_err "Error while fetching ${file}.txz"
