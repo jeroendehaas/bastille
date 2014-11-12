@@ -1029,6 +1029,8 @@ EOF
                            new jail
     -6 [ipv6[,...]]     -- A list of IPv6 address with which to associate the 
                            new jail
+    -p parameter=value  -- Sets parameter to value for the new jail. This
+                           option may appear several times.
 EOF
 [ "$cmd" = 'add-components' ] && cat <<EOF
     -a component        -- Adds component. This option may be repeated several
