@@ -1075,19 +1075,6 @@ done
 eval "set -- $cmd_line"
 #}}}1
 
-case "$command" in
-    prepare|usage) ;;
-    create-jail|start-jail|stop-jail|restart-jail|shell|create-template|add-components|upgrade|update)
-        if is_not_prepared; then
-            err "Could not find the base filesystem for jails. Did you run '`basename $0` prepare'?"
-        fi
-        ;;
-    *)
-        warn "Unknown command: $command"
-        command='usage'
-esac
-
-
 # Parse global options first
 OPTIND=1
 while getopts `all_legal_opts $command` arg; do
@@ -1100,7 +1087,17 @@ while getopts `all_legal_opts $command` arg; do
     esac
 done
 
-
+case "$command" in
+    prepare|usage) ;;
+    create-jail|start-jail|stop-jail|restart-jail|shell|create-template|add-components|upgrade|update)
+        if is_not_prepared; then
+            err "Could not find the base filesystem for jails. Did you run '`basename $0` prepare'?"
+        fi
+        ;;
+    *)
+        warn "Unknown command: $command"
+        command='usage'
+esac
 
 case $command in
     "prepare")
