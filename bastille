@@ -17,6 +17,7 @@ readonly CONFIG_LOCATION=/usr/local/etc/bastille.conf
 
 BASTILLE_USER_CHANGED_JAIL_PATH=""
 
+readonly BASTILLE_VERSION='0.1'
 readonly BASTILLE_OPT_GLOBAL_BASTILLE_DIR='b:'
 readonly BASTILLE_OPT_GLOBAL_MIRROR='m:'
 readonly BASTILLE_OPT_GLOBAL_RELEASE='r:'
@@ -1009,6 +1010,7 @@ Commands:
     upgrade             -- Upgrade the base jail filesystem to a newer release,
                            using freebsd-update(8)
     usage               -- Display this message
+    version             -- Display version number
 EOF
 [ "$cmd" != 'command' ] && cat <<EOF
 
@@ -1033,6 +1035,12 @@ EOF
                            times.
 EOF
     exit ${2:-0}
+}
+
+# version {{{1
+# displays Bastille's version number
+version() {
+    echo $BASTILLE_VERSION
 }
 # }}}1
 
@@ -1083,7 +1091,7 @@ while getopts `all_legal_opts $command` arg; do
 done
 
 case "$command" in
-    prepare|usage) ;;
+    prepare|usage|version) ;;
     create-jail|start-jail|stop-jail|restart-jail|shell|create-template|add-components|upgrade|update)
         if is_not_prepared; then
             err "Could not find the base filesystem for jails. Did you run '`basename $0` prepare'?"
@@ -1127,6 +1135,9 @@ case $command in
         ;;
     "usage")
         usage
+        ;;
+    "version")
+        version
         ;;
     *)
         usage

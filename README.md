@@ -104,6 +104,7 @@ may appear anywhere on the command line, and some additional options.
         [-6 ip6.addr] [-h hostname] [-t template] create-jail
     bastille [-b bastille-dir] update
     bastille [-b bastille-dir] [-r release] upgrade
+    bastille version
 ```
 
 ## Global options
@@ -184,3 +185,6 @@ option or, if the `-r` option was omitted, to the host's release.
 This command will upgrade the base file system and all jails in 
 `<bastille-dir>/jails`. This is done, because once the base file systems are 
 updated, its impossible to figure out from which version they were upgraded..
+
+## version
+Displays Bastille's version number
