@@ -157,14 +157,14 @@ get_jail_conf() {
 # err {{{1
 # echoes 'Error: ' followed by its arguments to stderr and exits
 err() {
-    echo -e "Error:" $@ 1>&2
+    echo -e "Error:" "$@" 1>&2
     exit 1
 }
 
 # warn {{{1
 # echoes 'Warning: ' followed by its arguments to stderr but does not exit
 warn() {
-    echo -e "Warning:" $@ 1>&2
+    echo -e "Warning:" "$@" 1>&2
 }
 
 # empty_dir {{{1
@@ -431,7 +431,7 @@ clone() {
     local what=$2
     local to=$3
     shift 3
-    tar $@ -f - -C $from -c $what | tar -xf - -p -C $to
+    tar "$@" -f - -C $from -c $what | tar -xf - -p -C $to
 }
 
 # clone_from_base {{{1
@@ -454,7 +454,7 @@ clone_from_base() {
 
     shift 3
 
-    clone $from_dir $what $to_dir $@
+    clone $from_dir $what $to_dir "$@"
 }
 
 
@@ -463,7 +463,7 @@ clone_from_base() {
 # by calling clone_from_base with the first argument set to rw,
 # followed by the arguments with which this function was called
 clone_from_base_rw() {
-    clone_from_base rw $@
+    clone_from_base rw "$@"
 }
 
 # clone_from_base_ro {{{1
@@ -471,7 +471,7 @@ clone_from_base_rw() {
 # by calling clone_from_base with the first argument set to ro,
 # followed by the arguments with which this function was called
 clone_from_base_ro() {
-    clone_from_base ro $@
+    clone_from_base ro "$@"
 }
 
 
@@ -502,7 +502,7 @@ create_template() {
 
     cleanup_and_err() {
         [ -d "$t_root" ] && rm -rf $t_root > /dev/null 2>&1
-        err $@
+        err "$@"
     }
 
     OPTIND=1
@@ -629,11 +629,11 @@ EOF
     
     cleanup_and_err() {
         rm -rf $dest_dir > /dev/null 2>&1
-        err $@
+        err "$@"
     }
 
     say() {
-        $quiet || echo $@
+        $quiet || echo "$@"
     }
 
     [ -d "$dest_dir" ] && \
@@ -800,7 +800,7 @@ add_component() {
 
     cleanup_and_err() {
         cleanup
-        err $@
+        err "$@"
     }
 
     case "$component" in
@@ -869,7 +869,7 @@ prepare() {
             j=$(dir_for_base_part $i)
             [ -d "$j" ] && chflag_and_rm $j
         done
-        err $@
+        err "$@"
     }
 cat <<-EOF
 About to install a base filesystem for bastille
@@ -933,7 +933,7 @@ jail_freebsd_update() {
     }
 
     cleanup_and_err() {
-        err $@
+        err "$@"
     }
 
     : > $log_file
