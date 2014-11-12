@@ -89,7 +89,9 @@ Every jail is based on a template. If none was explicitly specified, the
 `default` template is used. Files in a template supersede those in the base rw 
 part.
 
-# Commands
+# Usage
+Bastille provides the `bastille` script which expects at least a command, which 
+may appear anywhere on the command line, and some additional options. 
 
 ## Synopsis
 ```
