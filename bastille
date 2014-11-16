@@ -942,7 +942,14 @@ jail_freebsd_update() {
         echo -n "${echo_command%'e'}ing ${display_target}"
         [ -d "$target" ] || continue;
         echo -n '.'
-        UNAME_r="$jail_base_release" PAGER=cat freebsd-update $initial_command -b $target $to_release > $log_file 2>&1 
+
+        # fetch cannot be run non-interactively
+        if [ "$initial_command" = "fetch" ]; then
+            UNAME_r="$jail_base_release" freebsd-update fetch -b $target
+        else
+            echo y | UNAME_r="$jail_base_release" PAGER=cat freebsd-update upgrade -b $target $to_release > $log_file 2>&1 
+        fi
+
         if [ "$?" -gt 0 ]; then
             cat $log_file 1>&2
             cleanup_and_err "jail_freebsd_update ($LINENO): Error while fetching ${echo_command}"
