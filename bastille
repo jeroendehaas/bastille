@@ -1099,6 +1099,11 @@ while getopts `all_legal_opts $command` arg; do
     esac
 done
 
+if get_release | grep -qE 'CURRENT|STABLE'; then
+    err "bastille does not manage jails that run -CURRENT or -STABLE"
+fi
+
+
 case "$command" in
     prepare|usage|version) ;;
     create-jail|start-jail|stop-jail|restart-jail|shell|create-template|add-components|upgrade|update)
